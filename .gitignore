@@ -1,0 +1,29 @@
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.tool-versions
+
+# ── Playwright MCP (Claude Code browser automation — screenshots, logs) ───────
+.playwright-mcp/
+
+# ── Node (local tooling only) ─────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── Convex generated files (auto-created by `npx convex dev`) ────────────────
+convex/_generated/
+
+# ── Secrets — never commit ────────────────────────────────────────────────────
+.env
+.env.*
+
+# ── Prevent deployment of dev files ──────────────────────────────────────────
+package.json
+.claudeignore
+
+# ── Jekyll artifacts (legacy) ─────────────────────────────────────────────────
+_site/
+.jekyll-cache/
+.sass-cache/
+.jekyll-metadata
+vendor/
+.bundle/
