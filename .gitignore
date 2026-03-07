@@ -18,6 +18,7 @@ convex/_generated/
 
 # ── Prevent deployment of dev files ──────────────────────────────────────────
 package.json
+!worker/package.json
 .claudeignore
 
 # ── Jekyll artifacts (legacy) ─────────────────────────────────────────────────

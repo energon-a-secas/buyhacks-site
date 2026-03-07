@@ -1,21 +1,43 @@
 // ── DOM rendering ────────────────────────────────────────────────────
 import { PRODUCTS, CATEGORIES, VERDICT_LABELS } from "./data.js";
-import { state } from "./state.js";
+import { state, getUserRole } from "./state.js";
 import { escHtml, timeAgo } from "./utils.js";
 
 /** Render category filter chips. */
 export function renderChips() {
   const container = document.getElementById("category-chips");
   if (!container) return;
-  container.innerHTML = CATEGORIES.map(
-    (c) =>
-      `<button class="chip${state.activeCategory === c.id ? " active" : ""}" data-category="${c.id}">${escHtml(c.label)}</button>`
-  ).join("");
+  const allProducts = getAllProducts();
+  container.innerHTML = CATEGORIES.map((c) => {
+    const count = c.id === "all" ? allProducts.length : allProducts.filter((p) => p.category === c.id).length;
+    return `<button class="chip${state.activeCategory === c.id ? " active" : ""}" data-category="${c.id}">${escHtml(c.label)}${count > 0 ? ` <span class="chip-count">${count}</span>` : ""}</button>`;
+  }).join("");
+}
+
+/** Get all products (static + user-submitted from Convex). */
+function getAllProducts() {
+  const userMapped = state.userProducts.map((p) => ({
+    id: p._id,
+    _id: p._id,
+    slug: p.slug,
+    name: p.name,
+    brand: p.brand,
+    category: p.category,
+    tags: p.tags || [],
+    description: p.description,
+    image: p.imageUrl || null,
+    tips: [],
+    note: p.note || null,
+    verdict: p.verdict,
+    uploadedBy: p.uploadedBy,
+    isUserSubmitted: true,
+  }));
+  return [...PRODUCTS, ...userMapped];
 }
 
 /** Get filtered and sorted products. */
 function getFilteredProducts() {
-  let list = PRODUCTS;
+  let list = getAllProducts();
 
   if (state.activeCategory !== "all") {
     list = list.filter((p) => p.category === state.activeCategory);
@@ -63,9 +85,20 @@ function makeProductCard(product) {
     ? `<div class="card-image"><img src="${escHtml(product.image)}" alt="${escHtml(product.name)}" loading="lazy"></div>`
     : `<div class="card-image card-image-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>`;
 
+  const isAdmin = getUserRole() === "admin";
   const hacksHtml = hacks.length
-    ? hacks.map((h) => `<div class="hack-item"><span class="hack-text">${escHtml(h.text)}</span><span class="hack-meta">${escHtml(h.submittedBy)} &middot; ${timeAgo(h.createdAt)}</span></div>`).join("")
+    ? hacks.map((h) => {
+        const delBtn = isAdmin && h._id ? ` <button class="hack-delete" data-hack-id="${h._id}" title="Delete tip">&times;</button>` : "";
+        return `<div class="hack-item"><span class="hack-text">${escHtml(h.text)}</span><span class="hack-meta">${escHtml(h.submittedBy)} &middot; ${timeAgo(h.createdAt)}${delBtn}</span></div>`;
+      }).join("")
     : '<div class="hack-empty">No tips yet. Be the first!</div>';
+
+  const deleteBtn = isAdmin && product.isUserSubmitted && product._id
+    ? `<button class="product-delete" data-product-id="${product._id}" title="Delete product">&times;</button>`
+    : "";
+  const submittedHtml = product.isUserSubmitted
+    ? `<div class="card-submitted">Added by ${escHtml(product.uploadedBy)}</div>`
+    : "";
 
   return `<article class="product-card" data-slug="${product.slug}">
     ${imageHtml}
@@ -73,7 +106,9 @@ function makeProductCard(product) {
       <div class="card-header">
         <span class="verdict-badge ${verdictClass}">${VERDICT_LABELS[product.verdict]}</span>
         <span class="card-category">${escHtml(CATEGORIES.find((c) => c.id === product.category)?.label || product.category)}</span>
+        ${deleteBtn}
       </div>
+      ${submittedHtml}
       <h3 class="card-name">${escHtml(product.name)}</h3>
       <div class="card-brand">${escHtml(product.brand)}</div>
       <p class="card-desc">${escHtml(product.description)}</p>
@@ -128,18 +163,3 @@ export function renderGrid() {
   if (countEl) countEl.textContent = `${products.length} product${products.length !== 1 ? "s" : ""}`;
 }
 
-/** Update auth UI. */
-export function renderAuth(username) {
-  const loginPanel = document.getElementById("auth-login");
-  const userPanel = document.getElementById("auth-user");
-  const userLabel = document.getElementById("auth-username");
-  if (!loginPanel || !userPanel) return;
-  if (username) {
-    loginPanel.hidden = true;
-    userPanel.hidden = false;
-    if (userLabel) userLabel.textContent = username;
-  } else {
-    loginPanel.hidden = false;
-    userPanel.hidden = true;
-  }
-}

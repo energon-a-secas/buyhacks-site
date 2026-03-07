@@ -11,6 +11,7 @@ export const getHacks = query({
     for (const hack of allHacks) {
       if (!byProduct[hack.productSlug]) byProduct[hack.productSlug] = [];
       byProduct[hack.productSlug].push({
+        _id: hack._id,
         text: hack.text,
         submittedBy: hack.submittedBy,
         createdAt: hack.createdAt,
@@ -23,6 +24,24 @@ export const getHacks = query({
     }
 
     return byProduct;
+  },
+});
+
+/** Admin-only: delete a hack by its _id. */
+export const deleteHack = mutation({
+  args: { hackId: v.id("hacks"), adminUsername: v.string() },
+  handler: async (ctx, args) => {
+    const admin = await ctx.db
+      .query("users")
+      .withIndex("by_username", (q) => q.eq("username", args.adminUsername.trim().toLowerCase()))
+      .first();
+    if (!admin || admin.role !== "admin") {
+      return { ok: false, error: "Not authorized" };
+    }
+    const hack = await ctx.db.get(args.hackId);
+    if (!hack) return { ok: false, error: "Hack not found" };
+    await ctx.db.delete(args.hackId);
+    return { ok: true };
   },
 });
 

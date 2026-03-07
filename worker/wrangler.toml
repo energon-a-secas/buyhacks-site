@@ -1,0 +1,10 @@
+name = "buyhacks-removebg"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# The remove.bg API key is stored as a secret:
+#   npx wrangler secret put REMOVEBG_API_KEY
+
+# Allowed origins for CORS (comma-separated, set as a secret or variable)
+[vars]
+ALLOWED_ORIGINS = "https://buyhacks.neorgon.com,http://localhost:8777"

@@ -5,6 +5,7 @@ export default defineSchema({
   users: defineTable({
     username: v.string(),
     passwordHash: v.string(),
+    role: v.optional(v.string()),
   }).index("by_username", ["username"]),
 
   votes: defineTable({
@@ -22,4 +23,18 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_product", ["productSlug"])
     .index("by_visitor", ["visitorId"]),
+
+  products: defineTable({
+    slug: v.string(),
+    name: v.string(),
+    brand: v.string(),
+    category: v.string(),
+    tags: v.array(v.string()),
+    description: v.string(),
+    verdict: v.string(),
+    note: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
+    uploadedBy: v.string(),
+    createdAt: v.number(),
+  }).index("by_slug", ["slug"]),
 });

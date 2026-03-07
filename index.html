@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh; style-src 'self' 'unsafe-inline'; img-src 'self' https://minibooks.lucianoadonis.com data:; connect-src 'self' https://*.convex.cloud">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh; style-src 'self' 'unsafe-inline'; img-src 'self' https://minibooks.lucianoadonis.com https://*.convex.cloud data: blob:; connect-src 'self' https://*.convex.cloud https://*.workers.dev">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BuyHacks — Product Life Hacks</title>
   <meta name="description" content="Curated product showcase with community votes and life-hack tips. Browse 24 tested products, vote love/own/want, and share your best tips">
@@ -46,35 +46,94 @@
       </div>
     </div>
 
-    <button class="auth-toggle-btn" id="auth-toggle" aria-label="Account">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-    </button>
-
-    <a class="header-home" href="https://neorgon.com/" title="neorgon.com" aria-label="Neorgon home">
+    <nav>
+      <button class="nav-link" id="addProductToggle" style="color:var(--accent);border-color:rgba(245,158,11,.2)">Add Product</button>
+      <button class="auth-toggle" id="authToggle" aria-label="Account">
+        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7.5 6.5C7.5 8.981 9.519 11 12 11s4.5-2.019 4.5-4.5S14.481 2 12 2 7.5 4.019 7.5 6.5zM20 21h1v-1c0-3.859-3.141-7-7-7h-4c-3.86 0-7 3.141-7 7v1h17z"/>
+        </svg>
+      </button>
+      <a class="header-home" href="https://neorgon.com/" title="neorgon.com" aria-label="Neorgon home" style="margin-left:5px">
       <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
         <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
       </svg>
     </a>
+    </nav>
   </header>
 
-  <!-- Auth panel (collapsed) -->
-  <div class="auth-panel" id="auth-panel">
-    <div id="auth-login">
-      <input type="text" id="auth-username-input" placeholder="Username" autocomplete="username" maxlength="20">
-      <input type="password" id="auth-password-input" placeholder="Password" autocomplete="current-password">
-      <div class="auth-btns">
-        <button id="auth-login-btn" class="btn-sm">Login</button>
-        <button id="auth-register-btn" class="btn-sm btn-outline">Register</button>
+  <!-- Auth panel (collapsible, below header) -->
+  <div class="auth-panel" id="authPanel">
+    <div class="auth-panel-inner">
+      <div id="authGate">
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">Log In</button>
+          <button class="auth-tab" data-tab="register">Register</button>
+        </div>
+        <div class="auth-form" id="authLoginForm">
+          <input type="text" id="authLoginUser" placeholder="Username" autocomplete="username" maxlength="20">
+          <input type="password" id="authLoginPass" placeholder="Password" autocomplete="current-password">
+          <button class="auth-submit" id="authLoginBtn">Log In</button>
+        </div>
+        <div class="auth-form" id="authRegisterForm" hidden>
+          <input type="text" id="authRegUser" placeholder="Choose a username" autocomplete="username" maxlength="20">
+          <input type="password" id="authRegPass" placeholder="Choose a password" autocomplete="new-password">
+          <button class="auth-submit" id="authRegBtn">Register</button>
+        </div>
+      </div>
+      <div id="authUser" hidden>
+        <span class="auth-username" id="authUsername"></span>
+        <span class="auth-role" id="authRole" hidden>admin</span>
+        <button class="auth-logout" id="authLogout">Log out</button>
       </div>
     </div>
-    <div id="auth-user" hidden>
-      <span>Logged in as <strong id="auth-username"></strong></span>
-      <button id="auth-logout-btn" class="btn-sm btn-outline">Logout</button>
-    </div>
   </div>
+  <div class="auth-divider"></div>
 
   <main id="main">
     <div class="container">
+
+      <!-- Add Product panel (collapsible) -->
+      <div class="upload-panel" id="uploadPanel">
+        <h3 class="upload-heading">Add Product</h3>
+        <div id="uploadLoginPrompt">
+          <p class="upload-login-msg">Log in to add products.</p>
+        </div>
+        <div id="uploadZone" style="display:none">
+          <div class="upload-form-grid">
+            <div class="upload-image-col">
+              <div class="drop-zone" id="dropZone">Drop image here or click to browse</div>
+              <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
+              <img id="previewImg" src="" alt="preview" class="upload-preview-img" style="display:none">
+            </div>
+            <div class="upload-fields-col">
+              <input type="text" id="productName" placeholder="Product name" maxlength="60" class="upload-input">
+              <input type="text" id="productBrand" placeholder="Brand" maxlength="60" class="upload-input">
+              <select id="productCategory" class="upload-input">
+                <option value="organization">Organization</option>
+                <option value="cleaning-lifestyle">Cleaning & Lifestyle</option>
+                <option value="work-tech">Work Tech</option>
+                <option value="specific-useful">Specific But Useful</option>
+                <option value="aliexpress">AliExpress Finds</option>
+                <option value="house-tools">House Tools</option>
+                <option value="tried-but">Tried But...</option>
+              </select>
+              <input type="text" id="productDescription" placeholder="Short description" maxlength="200" class="upload-input">
+              <input type="text" id="productTags" placeholder="Tags (comma-separated)" maxlength="120" class="upload-input">
+              <select id="productVerdict" class="upload-input">
+                <option value="recommended">Recommended</option>
+                <option value="mixed">Mixed Feelings</option>
+                <option value="skip">Skip</option>
+              </select>
+              <label class="removebg-toggle">
+                <input type="checkbox" id="removeBgToggle" checked>
+                <span>Remove background</span>
+              </label>
+              <button class="upload-submit-btn" id="uploadSubmit">Submit Product</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Controls -->
       <div class="controls">
         <div class="search-wrap">

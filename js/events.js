@@ -1,18 +1,21 @@
 // ── Event handlers ───────────────────────────────────────────────────
-import { state, convex, api, visitorId, getLoggedInUser, setLoggedInUser } from "./state.js";
-import { renderChips, renderGrid, renderAuth } from "./render.js";
+import { state, convex, api, visitorId, getLoggedInUser, setLoggedInUser, getUserRole, setUserRole, REMOVEBG_WORKER_URL } from "./state.js";
+import { renderChips, renderGrid } from "./render.js";
 import { toast, debounce } from "./utils.js";
 
-/** Load votes and hacks from Convex. */
+/** Load votes, hacks, and user products from Convex. */
 export async function loadRemoteData() {
   try {
-    const [voteData, hackData] = await Promise.all([
+    const [voteData, hackData, userProducts] = await Promise.all([
       convex.query(api.votes.getVotes, { visitorId }),
       convex.query(api.hacks.getHacks, {}),
+      convex.query(api.products.list, {}),
     ]);
     state.voteCounts = voteData.counts;
     state.myVotes = voteData.mine;
     state.hacks = hackData;
+    state.userProducts = userProducts || [];
+    renderChips();
     renderGrid();
   } catch {
     // Convex not configured yet — run with local-only data
@@ -43,6 +46,167 @@ async function handleVote(slug, voteType) {
   }
 }
 
+/** Admin: delete a hack tip. */
+async function handleDeleteHack(hackId) {
+  if (!confirm("Delete this tip?")) return;
+  const username = getLoggedInUser();
+  if (!username) { toast("Login required"); return; }
+  try {
+    const result = await convex.mutation(api.hacks.deleteHack, { hackId, adminUsername: username });
+    if (result.ok) {
+      toast("Tip deleted");
+      await loadRemoteData();
+    } else {
+      toast(result.error);
+    }
+  } catch {
+    toast("Delete failed");
+  }
+}
+
+/** Admin: delete a user-submitted product. */
+async function handleDeleteProduct(productId) {
+  if (!confirm("Delete this product?")) return;
+  const username = getLoggedInUser();
+  if (!username) { toast("Login required"); return; }
+  try {
+    const result = await convex.mutation(api.products.deleteProduct, { productId, adminUsername: username });
+    if (result.ok) {
+      toast("Product deleted");
+      await loadRemoteData();
+    } else {
+      toast(result.error);
+    }
+  } catch {
+    toast("Delete failed");
+  }
+}
+
+/** Handle product image upload + form submission. */
+let pendingFile = null;
+
+function setupUploadPanel() {
+  const dropZone = document.getElementById("dropZone");
+  const fileInput = document.getElementById("fileInput");
+  const previewImg = document.getElementById("previewImg");
+  const uploadSubmit = document.getElementById("uploadSubmit");
+  if (!dropZone || !fileInput) return;
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith("image/")) handleFileSelect(file);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) handleFileSelect(fileInput.files[0]);
+  });
+
+  function handleFileSelect(file) {
+    pendingFile = file;
+    const url = URL.createObjectURL(file);
+    if (previewImg) {
+      previewImg.src = url;
+      previewImg.style.display = "block";
+      dropZone.style.display = "none";
+    }
+  }
+
+  if (uploadSubmit) {
+    uploadSubmit.addEventListener("click", async () => {
+      const name = document.getElementById("productName")?.value.trim();
+      const brand = document.getElementById("productBrand")?.value.trim();
+      const category = document.getElementById("productCategory")?.value;
+      const description = document.getElementById("productDescription")?.value.trim();
+      const tagsRaw = document.getElementById("productTags")?.value.trim();
+      const verdict = document.getElementById("productVerdict")?.value;
+      const username = getLoggedInUser();
+
+      if (!username) { toast("Login to add products"); return; }
+      if (!name) { toast("Product name is required"); return; }
+      if (!brand) { toast("Brand is required"); return; }
+      if (!description) { toast("Description is required"); return; }
+
+      const tags = tagsRaw ? tagsRaw.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean) : [];
+
+      uploadSubmit.disabled = true;
+      uploadSubmit.textContent = "Uploading...";
+
+      try {
+        let storageId = undefined;
+        if (pendingFile) {
+          let fileToUpload = pendingFile;
+          const removeBg = document.getElementById("removeBgToggle")?.checked;
+
+          // Route through Cloudflare Worker for background removal
+          if (removeBg) {
+            uploadSubmit.textContent = "Removing background...";
+            const bgResponse = await fetch(REMOVEBG_WORKER_URL, {
+              method: "POST",
+              headers: { "Content-Type": pendingFile.type },
+              body: pendingFile,
+            });
+            if (!bgResponse.ok) {
+              const err = await bgResponse.json().catch(() => ({}));
+              throw new Error(err.error || "Background removal failed");
+            }
+            const pngBlob = await bgResponse.blob();
+            fileToUpload = new File([pngBlob], "product.png", { type: "image/png" });
+            uploadSubmit.textContent = "Uploading...";
+          }
+
+          const uploadUrl = await convex.mutation(api.products.getUploadUrl, {});
+          const uploadResult = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": fileToUpload.type },
+            body: fileToUpload,
+          });
+          const { storageId: sid } = await uploadResult.json();
+          storageId = sid;
+        }
+
+        const result = await convex.mutation(api.products.saveProduct, {
+          name, brand, category, tags, description, verdict,
+          storageId,
+          uploadedBy: username,
+        });
+
+        if (result.ok) {
+          toast("Product added!");
+          // Reset form
+          pendingFile = null;
+          document.getElementById("productName").value = "";
+          document.getElementById("productBrand").value = "";
+          document.getElementById("productDescription").value = "";
+          document.getElementById("productTags").value = "";
+          if (previewImg) { previewImg.style.display = "none"; previewImg.src = ""; }
+          if (dropZone) dropZone.style.display = "";
+          await loadRemoteData();
+        } else {
+          toast(result.error);
+        }
+      } catch (e) {
+        toast("Upload failed: " + e.message);
+      } finally {
+        uploadSubmit.disabled = false;
+        uploadSubmit.textContent = "Submit Product";
+      }
+    });
+  }
+}
+
+/** Update upload zone visibility based on auth state. */
+function updateUploadZoneVisibility() {
+  const user = getLoggedInUser();
+  const loginPrompt = document.getElementById("uploadLoginPrompt");
+  const uploadZone = document.getElementById("uploadZone");
+  if (loginPrompt) loginPrompt.style.display = user ? "none" : "";
+  if (uploadZone) uploadZone.style.display = user ? "" : "none";
+}
+
 /** Handle hack form submissions. */
 async function handleHackSubmit(slug, text) {
   const user = getLoggedInUser();
@@ -70,28 +234,51 @@ async function handleHackSubmit(slug, text) {
   }
 }
 
+/** Update auth UI state. */
+function renderAuthState(username, role) {
+  const loggedIn = !!username;
+  const authGate = document.getElementById("authGate");
+  const authUser = document.getElementById("authUser");
+  const authToggle = document.getElementById("authToggle");
+  const authUsername = document.getElementById("authUsername");
+  const authRole = document.getElementById("authRole");
+  if (!authGate || !authUser) return;
+  authGate.hidden = loggedIn;
+  authUser.hidden = !loggedIn;
+  if (authToggle) authToggle.classList.toggle("logged-in", loggedIn);
+  if (loggedIn) {
+    if (authUsername) authUsername.textContent = username;
+    if (authRole) authRole.hidden = role !== "admin";
+  }
+}
+
 /** Handle auth (login/register). */
 async function handleAuth(action) {
-  const usernameEl = document.getElementById("auth-username-input");
-  const passwordEl = document.getElementById("auth-password-input");
-  if (!usernameEl || !passwordEl) return;
+  const isLogin = action === "login";
+  const userEl = document.getElementById(isLogin ? "authLoginUser" : "authRegUser");
+  const passEl = document.getElementById(isLogin ? "authLoginPass" : "authRegPass");
+  if (!userEl || !passEl) return;
 
-  const username = usernameEl.value.trim();
-  const password = passwordEl.value;
+  const username = userEl.value.trim();
+  const password = passEl.value;
   if (!username || !password) {
     toast("Enter username and password");
     return;
   }
 
   try {
-    const fn = action === "register" ? api.auth.register : api.auth.login;
+    const fn = isLogin ? api.auth.login : api.auth.register;
     const result = await convex.mutation(fn, { username, password });
     if (result.ok) {
+      const role = result.role || "user";
       setLoggedInUser(result.username);
-      renderAuth(result.username);
-      toast(action === "register" ? "Registered!" : "Logged in!");
-      usernameEl.value = "";
-      passwordEl.value = "";
+      setUserRole(role);
+      renderAuthState(result.username, role);
+      toast(isLogin ? `Welcome back, ${result.username}` : `Welcome, ${result.username}!`);
+      updateUploadZoneVisibility();
+      renderGrid();
+      userEl.value = "";
+      passEl.value = "";
     } else {
       toast(result.error);
     }
@@ -138,6 +325,20 @@ export function bindEvents() {
       return;
     }
 
+    // Admin: delete hack
+    const hackDel = e.target.closest(".hack-delete");
+    if (hackDel) {
+      handleDeleteHack(hackDel.dataset.hackId);
+      return;
+    }
+
+    // Admin: delete product
+    const prodDel = e.target.closest(".product-delete");
+    if (prodDel) {
+      handleDeleteProduct(prodDel.dataset.productId);
+      return;
+    }
+
     // Hack toggle
     const hackToggle = e.target.closest(".hacks-toggle");
     if (hackToggle) {
@@ -161,20 +362,61 @@ export function bindEvents() {
     }
   });
 
-  // Auth buttons
-  document.getElementById("auth-login-btn")?.addEventListener("click", () => handleAuth("login"));
-  document.getElementById("auth-register-btn")?.addEventListener("click", () => handleAuth("register"));
-  document.getElementById("auth-logout-btn")?.addEventListener("click", () => {
-    setLoggedInUser(null);
-    renderAuth(null);
-    toast("Logged out");
+  // Add Product toggle
+  document.getElementById("addProductToggle")?.addEventListener("click", () => {
+    const panel = document.getElementById("uploadPanel");
+    if (panel) panel.classList.toggle("open");
   });
 
   // Auth toggle
-  document.getElementById("auth-toggle")?.addEventListener("click", () => {
-    const panel = document.getElementById("auth-panel");
-    if (panel) panel.classList.toggle("open");
+  document.getElementById("authToggle")?.addEventListener("click", () => {
+    document.getElementById("authPanel")?.classList.toggle("open");
   });
+
+  // Auth tab switching
+  document.querySelectorAll(".auth-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".auth-tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      const isLogin = tab.dataset.tab === "login";
+      const loginForm = document.getElementById("authLoginForm");
+      const regForm = document.getElementById("authRegisterForm");
+      if (loginForm) loginForm.hidden = !isLogin;
+      if (regForm) regForm.hidden = isLogin;
+    });
+  });
+
+  // Auth buttons
+  document.getElementById("authLoginBtn")?.addEventListener("click", () => handleAuth("login"));
+  document.getElementById("authRegBtn")?.addEventListener("click", () => handleAuth("register"));
+  document.getElementById("authLogout")?.addEventListener("click", () => {
+    setLoggedInUser(null);
+    setUserRole(null);
+    renderAuthState(null);
+    updateUploadZoneVisibility();
+    renderGrid();
+    toast("Logged out");
+  });
+
+  // Enter key on auth forms
+  ["authLoginUser", "authLoginPass"].forEach(id => {
+    document.getElementById(id)?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") handleAuth("login");
+    });
+  });
+  ["authRegUser", "authRegPass"].forEach(id => {
+    document.getElementById(id)?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") handleAuth("register");
+    });
+  });
+
+  // Upload panel
+  setupUploadPanel();
+
+  // Restore auth state on load
+  const savedUser = getLoggedInUser();
+  if (savedUser) renderAuthState(savedUser, getUserRole());
+  updateUploadZoneVisibility();
 
   // Scroll to top
   const scrollBtn = document.getElementById("scroll-top");
