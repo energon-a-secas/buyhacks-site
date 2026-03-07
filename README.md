@@ -91,7 +91,7 @@ sequenceDiagram
 - CSS glassmorphism cards with amber `#f59e0b` accent
 - [Convex](https://convex.dev/) serverless backend (votes, hacks, auth, products, file storage)
 - [Cloudflare Workers](https://workers.cloudflare.com/) for remove.bg proxy
-- Images hosted at `minibooks.lucianoadonis.com` (static) + Convex storage (user uploads)
+- Product images self-hosted in `images/` + Convex storage (user uploads)
 
 ## Run locally
 

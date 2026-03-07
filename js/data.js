@@ -1,5 +1,5 @@
 // ── Product data extracted from lucianoadonis.github.io/pages/shopping.md ────
-const IMG = "https://minibooks.lucianoadonis.com/images/shopping";
+const IMG = "images";
 
 export const PRODUCTS = [
   // ── Organization ──────────────────────────────────────────────────────────
