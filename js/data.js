@@ -280,7 +280,7 @@ export const PRODUCTS = [
     category: "house-tools",
     tags: ["paint", "roof", "temperature", "home"],
     description: "Roof paint that reduces temperatures by up to 15 C.",
-    image: null,
+    image: `${IMG}/coolguard-paint.png`,
     tips: [
       "One coat lowers perceived heat inside rooms.",
       "Decreases indoor temperature by 4 C compared to outside at 32 C.",
@@ -321,7 +321,7 @@ export const PRODUCTS = [
     category: "tried-but",
     tags: ["drone", "camera", "outdoor", "video"],
     description: "Great gadget for outdoor enthusiasts — if you actually go outside.",
-    image: null,
+    image: `${IMG}/dji-air-1.png`,
     tips: [
       "Three batteries provide ~30 minutes total flight time.",
       "Wind and battery health reduce actual flight time.",
