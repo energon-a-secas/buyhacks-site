@@ -1,0 +1,56 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#0f172a"
+    primaryTextColor: "#e2e8f0"
+    primaryBorderColor: "#0063e5"
+    lineColor: "#38bdf8"
+    secondaryColor: "#1e293b"
+    tertiaryColor: "#1e293b"
+    clusterBkg: "#f0f7ff"
+    clusterBorder: "#bfdbfe"
+    edgeLabelBackground: "#e8f0ff"
+    mainBkg: "#0f172a"
+    nodeBorder: "#0063e5"
+    titleColor: "#1e1b4b"
+    fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif"
+    fontSize: "13px"
+---
+
+flowchart TB
+    subgraph Browser["Browser (Static Site)"]
+        UI["index.html + ES Modules"]
+        State["state.js - Convex client, auth, app state"]
+        Events["events.js - upload, votes, hacks, auth"]
+        Render["render.js - product grid, cards, chips"]
+    end
+
+    subgraph Convex["Convex Backend"]
+        Auth["auth.ts - register / login"]
+        Votes["votes.ts - getVotes / toggleVote"]
+        Hacks["hacks.ts - getHacks / submitHack / deleteHack"]
+        Products["products.ts - list / save / delete"]
+        Storage["Convex File Storage"]
+    end
+
+    subgraph CF["Cloudflare Worker"]
+        Worker["buyhacks-removebg"]
+        RemoveBG["remove.bg API"]
+    end
+
+    UI -->|"ES module imports"| State
+    UI --> Events
+    UI --> Render
+
+    Events -->|"mutations / queries"| Auth
+    Events -->|"mutations / queries"| Votes
+    Events -->|"mutations / queries"| Hacks
+    Events -->|"mutations / queries"| Products
+    Products -->|"read / write"| Storage
+
+    Events -->|"POST image"| Worker
+    Worker -->|"forward + API key"| RemoveBG
+    RemoveBG -->|"transparent PNG"| Worker
+    Worker -->|"transparent PNG"| Events
+    Events -->|"upload processed image"| Storage

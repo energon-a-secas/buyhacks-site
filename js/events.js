@@ -370,7 +370,11 @@ export function bindEvents() {
 
   // Auth toggle
   document.getElementById("authToggle")?.addEventListener("click", () => {
-    document.getElementById("authPanel")?.classList.toggle("open");
+    const panel = document.getElementById("authPanel");
+    panel?.classList.toggle("open");
+    if (panel?.classList.contains("open")) {
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
 
   // Auth tab switching

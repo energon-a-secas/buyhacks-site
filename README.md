@@ -16,45 +16,7 @@ Curated product showcase with community votes and life-hack tips.
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph Browser["Browser (Static Site)"]
-        UI["index.html + ES Modules"]
-        State["state.js — Convex client, auth, app state"]
-        Events["events.js — upload, votes, hacks, auth"]
-        Render["render.js — product grid, cards, chips"]
-    end
-
-    subgraph Convex["Convex Backend"]
-        Auth["auth.ts — register / login"]
-        Votes["votes.ts — getVotes / toggleVote"]
-        Hacks["hacks.ts — getHacks / submitHack / deleteHack"]
-        Products["products.ts — list / save / delete"]
-        Storage["Convex File Storage"]
-        Schema["schema.ts — users, votes, hacks, products"]
-    end
-
-    subgraph CF["Cloudflare Worker"]
-        Worker["buyhacks-removebg"]
-        RemoveBG["remove.bg API"]
-    end
-
-    UI -->|ES module imports| State
-    UI --> Events
-    UI --> Render
-
-    Events -->|mutations / queries| Auth
-    Events -->|mutations / queries| Votes
-    Events -->|mutations / queries| Hacks
-    Events -->|mutations / queries| Products
-    Products -->|read / write| Storage
-
-    Events -->|"POST image (if toggle on)"| Worker
-    Worker -->|"forward image + API key"| RemoveBG
-    RemoveBG -->|"transparent PNG"| Worker
-    Worker -->|"transparent PNG"| Events
-    Events -->|"upload processed image"| Storage
-```
+![Architecture](docs/architecture.svg)
 
 ## Image Upload Flow
 
