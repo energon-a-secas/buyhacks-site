@@ -28,3 +28,6 @@ _site/
 .jekyll-metadata
 vendor/
 .bundle/
+
+# Claude AI guidance (maintained centrally in .claude/project-claudes/)
+CLAUDE.md
