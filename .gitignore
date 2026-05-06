@@ -1,33 +1,22 @@
 # ── macOS ─────────────────────────────────────────────────────────────────────
 .DS_Store
-.tool-versions
 
 # ── Playwright MCP (Claude Code browser automation — screenshots, logs) ───────
 .playwright-mcp/
 
-# ── Node (local tooling only) ─────────────────────────────────────────────────
+# ── Playwright test artifacts ─────────────────────────────────────────────────
+test-results/
+playwright-report/
+blob-report/
+
+# ── Node ──────────────────────────────────────────────────────────────────────
 node_modules/
 npm-debug.log*
+package-lock.json
 
-# ── Convex generated files (auto-created by `npx convex dev`) ────────────────
+# ── Convex generated files ────────────────────────────────────────────────────
 convex/_generated/
 
 # ── Secrets — never commit ────────────────────────────────────────────────────
 .env
 .env.*
-
-# ── Prevent deployment of dev files ──────────────────────────────────────────
-package.json
-!worker/package.json
-.claudeignore
-
-# ── Jekyll artifacts (legacy) ─────────────────────────────────────────────────
-_site/
-.jekyll-cache/
-.sass-cache/
-.jekyll-metadata
-vendor/
-.bundle/
-
-# Claude AI guidance (maintained centrally in .claude/project-claudes/)
-CLAUDE.md
