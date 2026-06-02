@@ -78,6 +78,8 @@ export const state = {
   voteCounts: {},
   myVotes: {},
   hacks: {},
+  /** False until the first Convex catalog load attempt resolves (drives skeleton vs empty state). */
+  productsLoaded: false,
   /** Mapped Convex `products:list` rows (curated catalog + community). */
   products: [],
   freshnessFeed: { recentTips: [], newestProducts: [] },

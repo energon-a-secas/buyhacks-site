@@ -197,6 +197,23 @@ function refreshBrowseUi() {
   pushUrl();
 }
 
+/** Reset every browse filter to its default and re-render. */
+function clearAllFilters() {
+  state.activeCategory = "all";
+  state.searchQuery = "";
+  state.activeTags = [];
+  state.verdictFilter = "all";
+  state.sortBy = "default";
+  state.viewMode = "grid";
+  state.detailSlug = null;
+  const search = document.getElementById("search-input");
+  if (search) search.value = "";
+  const sort = document.getElementById("sort-select");
+  if (sort) sort.value = "default";
+  syncControlsFromState();
+  refreshBrowseUi();
+}
+
 export function syncControlsFromState() {
   state.activeCategory = normalizeCategoryId(state.activeCategory);
   const search = document.getElementById("search-input");
@@ -221,18 +238,22 @@ export async function loadRemoteData() {
     state.hacks = hackData;
     state.products = catalogFromConvexRows(productRows || []);
   } catch {
+    state.productsLoaded = true;
+    refreshBrowseUi();
     return;
   }
+  state.productsLoaded = true;
   try {
-    state.freshnessFeed = await convex.query(api.freshness.getFeed, { tipsLimit: 14, productsLimit: 6 });
+    state.freshnessFeed = await convex.query(api.freshness.getFeed, { tipsLimit: 6, productsLimit: 3 });
   } catch {
     state.freshnessFeed = { recentTips: [], newestProducts: [] };
   }
   refreshBrowseUi();
 }
 
-/** Handle vote button clicks. */
-async function handleVote(slug, voteType) {
+/** Handle vote button clicks. The optimistic re-render is the primary feedback;
+ *  `_btn` is accepted for call-site symmetry and possible future use. */
+async function handleVote(slug, voteType, _btn) {
   // Optimistic update
   if (!state.voteCounts[slug]) state.voteCounts[slug] = { love: 0, own: 0, want: 0 };
   if (!state.myVotes[slug]) state.myVotes[slug] = [];
@@ -420,13 +441,20 @@ function updateUploadZoneVisibility() {
 }
 
 /** Handle hack form submissions. */
-async function handleHackSubmit(slug, text) {
+async function handleHackSubmit(slug, text, submitBtn) {
   const user = getLoggedInUser();
   if (!user) {
     toast("Sign in to share tips");
     return;
   }
   if (!text.trim()) return;
+
+  let restoreLabel;
+  if (submitBtn) {
+    restoreLabel = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Posting…";
+  }
 
   try {
     const result = await convex.mutation(api.hacks.submitHack, {
@@ -442,6 +470,12 @@ async function handleHackSubmit(slug, text) {
     }
   } catch {
     toast("Could not submit tip — check Convex connection");
+  } finally {
+    // loadRemoteData re-renders the panel, but restore in case the node persists.
+    if (submitBtn && submitBtn.isConnected) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = restoreLabel || "Post";
+    }
   }
 }
 
@@ -528,21 +562,7 @@ export function bindEvents() {
     pushUrl();
   });
 
-  document.getElementById("clear-filters")?.addEventListener("click", () => {
-    state.activeCategory = "all";
-    state.searchQuery = "";
-    state.activeTags = [];
-    state.verdictFilter = "all";
-    state.sortBy = "default";
-    state.viewMode = "grid";
-    state.detailSlug = null;
-    const search = document.getElementById("search-input");
-    if (search) search.value = "";
-    const sort = document.getElementById("sort-select");
-    if (sort) sort.value = "default";
-    syncControlsFromState();
-    refreshBrowseUi();
-  });
+  document.getElementById("clear-filters")?.addEventListener("click", clearAllFilters);
 
   window.addEventListener("resize", debounce(() => syncControlsFromState(), 200));
 
@@ -580,6 +600,11 @@ export function bindEvents() {
 
   // Open detail modal (anywhere), votes + hacks only inside grid or detail panel
   document.body.addEventListener("click", (e) => {
+    if (e.target.closest("[data-clear-filters]")) {
+      clearAllFilters();
+      return;
+    }
+
     const openBtn = e.target.closest("[data-open-product]");
     if (openBtn) {
       const slug = openBtn.getAttribute("data-open-product");
@@ -595,7 +620,7 @@ export function bindEvents() {
 
     const voteBtn = e.target.closest(".vote-btn");
     if (voteBtn) {
-      handleVote(voteBtn.dataset.slug, voteBtn.dataset.type);
+      handleVote(voteBtn.dataset.slug, voteBtn.dataset.type, voteBtn);
       return;
     }
 
@@ -618,8 +643,9 @@ export function bindEvents() {
     e.preventDefault();
     const slug = e.target.dataset.slug;
     const input = e.target.querySelector(".hack-input");
+    const submitBtn = e.target.querySelector(".hack-submit");
     if (input && input.value.trim()) {
-      handleHackSubmit(slug, input.value);
+      handleHackSubmit(slug, input.value, submitBtn);
       input.value = "";
     }
   });

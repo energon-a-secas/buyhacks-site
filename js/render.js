@@ -36,12 +36,23 @@ export function renderChips() {
   sel.value = state.activeCategory;
 }
 
+const FRESHNESS_OPEN_KEY = "buyhacks-whatsnew-open";
+
+function freshnessIsOpen() {
+  try {
+    return localStorage.getItem(FRESHNESS_OPEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 export function renderFreshnessSection() {
   const host = document.getElementById("freshness-section");
   if (!host) return;
   const feed = state.freshnessFeed || { recentTips: [], newestProducts: [] };
-  const tips = feed.recentTips || [];
-  const newest = feed.newestProducts || [];
+  // Keep the two columns balanced: a short, scannable digest, not a log.
+  const tips = (feed.recentTips || []).slice(0, 6);
+  const newest = (feed.newestProducts || []).slice(0, 3);
   if (!tips.length && !newest.length) {
     host.innerHTML = "";
     host.setAttribute("hidden", "");
@@ -51,7 +62,7 @@ export function renderFreshnessSection() {
 
   const tipsHtml = tips.length
     ? `<div class="freshness-col">
-        <h2 class="freshness-heading">Recent community tips</h2>
+        <h3 class="freshness-heading">Recent tips</h3>
         <ul class="freshness-list">
           ${tips
             .map((t) => {
@@ -70,20 +81,22 @@ export function renderFreshnessSection() {
 
   const newestHtml = newest.length
     ? `<div class="freshness-col">
-        <h2 class="freshness-heading">Newest community products</h2>
+        <h3 class="freshness-heading">Newest products</h3>
         <ul class="freshness-new-list">
           ${newest
             .map((p) => {
               const thumbSrc = p.imageUrl || p.imagePath;
               const thumb = thumbSrc
-                ? `<img src="${escHtml(thumbSrc)}" alt="" width="40" height="40" loading="lazy">`
+                ? `<img src="${escHtml(thumbSrc)}" alt="" width="44" height="44" loading="lazy">`
                 : `<span class="freshness-thumb-ph" aria-hidden="true"></span>`;
               return `<li class="freshness-new-item">
-                ${thumb}
-                <div class="freshness-new-body">
-                  <a class="freshness-jump" href="#product-${domIdSlug(p.slug)}">${escHtml(p.name)}</a>
-                  <span class="freshness-meta">${escHtml(p.brand)} · ${timeAgo(p.createdAt)}</span>
-                </div>
+                <a class="freshness-new-link" href="#product-${domIdSlug(p.slug)}">
+                  ${thumb}
+                  <span class="freshness-new-body">
+                    <span class="freshness-new-name">${escHtml(p.name)}</span>
+                    <span class="freshness-meta">${escHtml(p.brand)} · ${timeAgo(p.createdAt)}</span>
+                  </span>
+                </a>
               </li>`;
             })
             .join("")}
@@ -91,9 +104,30 @@ export function renderFreshnessSection() {
       </div>`
     : "";
 
-  host.innerHTML = `<section class="freshness-card" aria-label="What is new">
-    <div class="freshness-grid">${tipsHtml}${newestHtml}</div>
+  const open = freshnessIsOpen();
+  const chevron = `<svg class="freshness-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+  host.innerHTML = `<section class="freshness-card">
+    <details class="freshness-disclosure"${open ? " open" : ""}>
+      <summary class="freshness-summary">
+        <span class="freshness-summary-title">What's new</span>
+        ${newest.length ? `<span class="freshness-count">${newest.length} new</span>` : ""}
+        ${chevron}
+      </summary>
+      <div class="freshness-grid">${tipsHtml}${newestHtml}</div>
+    </details>
   </section>`;
+
+  const details = host.querySelector(".freshness-disclosure");
+  if (details) {
+    details.addEventListener("toggle", () => {
+      try {
+        localStorage.setItem(FRESHNESS_OPEN_KEY, details.open ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+    });
+  }
 }
 
 function getFilteredProducts() {
@@ -109,19 +143,18 @@ function getFilteredProducts() {
 }
 
 function voteButtonsHtml(product, counts, mine) {
-  return `<div class="vote-row">
-        <button type="button" class="vote-btn${mine.includes("love") ? " active" : ""}" data-slug="${product.slug}" data-type="love" title="Love it">
-          <svg viewBox="0 0 24 24" fill="${mine.includes("love") ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-          <span>${counts.love}</span>
-        </button>
-        <button type="button" class="vote-btn${mine.includes("own") ? " active" : ""}" data-slug="${product.slug}" data-type="own" title="I own this">
-          <svg viewBox="0 0 24 24" fill="${mine.includes("own") ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <span>${counts.own}</span>
-        </button>
-        <button type="button" class="vote-btn${mine.includes("want") ? " active" : ""}" data-slug="${product.slug}" data-type="want" title="I want this">
-          <svg viewBox="0 0 24 24" fill="${mine.includes("want") ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-          <span>${counts.want}</span>
-        </button>
+  const name = escHtml(product.name);
+  const btn = (type, label, count, svg) => {
+    const active = mine.includes(type);
+    return `<button type="button" class="vote-btn${active ? " active" : ""}" data-slug="${product.slug}" data-type="${type}" title="${label}" aria-label="${label} — ${name} (${count})" aria-pressed="${active ? "true" : "false"}">
+          ${svg}
+          <span>${count}</span>
+        </button>`;
+  };
+  return `<div class="vote-row" role="group" aria-label="React to ${name}">
+        ${btn("love", "Love it", counts.love, `<svg viewBox="0 0 24 24" fill="${mine.includes("love") ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`)}
+        ${btn("own", "I own this", counts.own, `<svg viewBox="0 0 24 24" fill="${mine.includes("own") ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`)}
+        ${btn("want", "I want this", counts.want, `<svg viewBox="0 0 24 24" fill="${mine.includes("want") ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`)}
       </div>`;
 }
 
@@ -371,6 +404,14 @@ export function renderProductDetailModal() {
 export function renderGrid() {
   const container = document.getElementById("product-grid");
   if (!container) return;
+
+  // Before the first catalog load resolves, keep the skeleton instead of
+  // flashing an empty state (auth onSession can call renderGrid early).
+  if (!state.productsLoaded && state.products.length === 0) {
+    renderGridSkeleton();
+    return;
+  }
+
   const products = getFilteredProducts();
 
   if (state.detailSlug && !products.some((p) => p.slug === state.detailSlug)) {
@@ -383,7 +424,22 @@ export function renderGrid() {
   }
 
   if (products.length === 0) {
-    container.innerHTML = '<div class="empty-state">No products match your filters.</div>';
+    const filtered =
+      state.searchQuery.trim() !== "" ||
+      state.activeCategory !== "all" ||
+      state.verdictFilter !== "all" ||
+      (state.activeTags && state.activeTags.length > 0);
+    const icon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`;
+    container.innerHTML = filtered
+      ? `<div class="empty-state">${icon}
+          <div class="empty-state-title">No products match</div>
+          <div class="empty-state-hint">Try a different search, or clear the category and filters.</div>
+          <button type="button" class="empty-state-reset" data-clear-filters>Clear filters</button>
+        </div>`
+      : `<div class="empty-state">${icon}
+          <div class="empty-state-title">Nothing here yet</div>
+          <div class="empty-state-hint">Sign in and add the first product to get the showcase started.</div>
+        </div>`;
     container.classList.remove("compact");
   } else {
     container.classList.toggle("compact", state.viewMode === "compact");
@@ -395,6 +451,25 @@ export function renderGrid() {
   if (countEl) countEl.textContent = `${products.length} product${products.length !== 1 ? "s" : ""}`;
 
   renderProductDetailModal();
+}
+
+/** Show placeholder cards while the initial Convex catalog is loading. */
+export function renderGridSkeleton(count = 8) {
+  const container = document.getElementById("product-grid");
+  if (!container) return;
+  container.classList.remove("compact");
+  const card = `<div class="skeleton-card" aria-hidden="true">
+      <div class="sk-img skeleton"></div>
+      <div class="sk-body">
+        <div class="sk-line sk-line--sm skeleton"></div>
+        <div class="sk-line sk-line--lg skeleton"></div>
+        <div class="sk-line skeleton"></div>
+        <div class="sk-line sk-line--row skeleton"></div>
+      </div>
+    </div>`;
+  container.innerHTML = card.repeat(count);
+  const live = document.getElementById("results-live");
+  if (live) live.textContent = "Loading products…";
 }
 
 export function renderViewToggle() {
