@@ -1,7 +1,14 @@
 {
   "name": "buyhacks-site",
   "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/filters.test.mjs && playwright test"
+  },
   "dependencies": {
     "convex": "^1.21.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1"
   }
 }

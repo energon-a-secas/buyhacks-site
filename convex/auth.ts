@@ -1,6 +1,23 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+function adminSubjects(): string[] {
+  return (process.env.ADMIN_SUBJECTS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** True when the signed-in Clerk user is in ADMIN_SUBJECTS (Convex dashboard). */
+export const isAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return false;
+    return adminSubjects().includes(identity.subject);
+  },
+});
+
 // Simple hash — not cryptographic, but sufficient for a fun site.
 // For production auth, use Convex Auth or a proper auth provider.
 function simpleHash(str: string): string {

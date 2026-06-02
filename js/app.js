@@ -1,12 +1,9 @@
 // ── Entry point ──────────────────────────────────────────────
-import { renderChips, renderGrid } from "./render.js";
-import { bindEvents, loadRemoteData } from "./events.js";
+import { readUrlIntoState } from "./url-sync.js";
+import { bindEvents, loadRemoteData, syncControlsFromState, initBuyhacksAuth } from "./events.js";
 
-function init() {
-  renderChips();
-  renderGrid();
-  bindEvents();
-  loadRemoteData();
-}
-
-init();
+readUrlIntoState();
+await initBuyhacksAuth();
+syncControlsFromState();
+bindEvents();
+await loadRemoteData();

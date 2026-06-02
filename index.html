@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.convex.cloud data: blob: https://pub-b597cd281a384f98a47e1f043a6c4160.r2.dev; connect-src 'self' https://*.convex.cloud https://*.workers.dev">
+  <meta name="clerk-publishable-key" content="pk_test_bGlrZWQtcHVwLTE3LmNsZXJrLmFjY291bnRzLmRldiQ">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.convex.cloud data: blob: https://pub-b597cd281a384f98a47e1f043a6c4160.r2.dev https://img.clerk.com; connect-src 'self' https://*.convex.cloud https://*.workers.dev https://*.clerk.accounts.dev https://clerk-telemetry.com https://api.clerk.com https://challenges.cloudflare.com; frame-src 'self' https://challenges.cloudflare.com https://*.clerk.accounts.dev; worker-src 'self' blob:">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BuyHacks | Product Life Hacks</title>
   <meta name="description" content="Curated product showcase with community votes and life-hack tips. Browse 24 tested products, vote love/own/want, and share your best tips">
@@ -41,57 +42,65 @@
 
   <header class="header-bar">
     <div class="header-logo">
-      <a href="https://ehq.cl/" target="_blank" rel="noopener noreferrer">
+      <a href="https://neorgon.com/" target="_blank" rel="noopener noreferrer">
         <img src="energon-classic-logo.png" class="header-logo-img" alt="Logo">
       </a>
-      <div>
+      <a href="./" class="header-title-link">
         <h1>BuyHacks</h1>
         <div class="header-subtitle">Product Life Hacks</div>
-      </div>
+      </a>
     </div>
 
     <nav>
-      <button class="nav-link" id="addProductToggle" style="color:var(--accent);border-color:rgba(245,158,11,.2)">Add Product</button>
-      <button class="auth-toggle" id="authToggle" aria-label="Account">
-        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-          <path d="M7.5 6.5C7.5 8.981 9.519 11 12 11s4.5-2.019 4.5-4.5S14.481 2 12 2 7.5 4.019 7.5 6.5zM20 21h1v-1c0-3.859-3.141-7-7-7h-4c-3.86 0-7 3.141-7 7v1h17z"/>
+      <button type="button" class="nav-link nav-link--highlight" id="addProductToggle">Add Product</button>
+      <button type="button" class="auth-toggle" id="authToggle" aria-label="Account">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/>
+          <circle cx="12" cy="10" r="3"/>
+          <path d="M6 19c1.2-3 3.5-4 6-4s4.8 1 6 4"/>
         </svg>
       </button>
-      <a class="header-home" href="https://neorgon.com/" title="neorgon.com" aria-label="Neorgon home" style="margin-left:5px">
-      <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-        <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-      </svg>
-    </a>
+      <a class="header-home" href="https://neorgon.com/" title="neorgon.com" aria-label="Neorgon home">
+        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+        </svg>
+      </a>
     </nav>
   </header>
 
-  <!-- Auth panel (collapsible, below header) -->
-  <div class="auth-panel" id="authPanel">
-    <div class="auth-panel-inner">
-      <div id="authGate">
-        <div class="auth-tabs">
-          <button class="auth-tab active" data-tab="login">Log In</button>
-          <button class="auth-tab" data-tab="register">Register</button>
-        </div>
-        <div class="auth-form" id="authLoginForm">
-          <input type="text" id="authLoginUser" placeholder="Username" autocomplete="username" maxlength="20">
-          <input type="password" id="authLoginPass" placeholder="Password" autocomplete="current-password">
-          <button class="auth-submit" id="authLoginBtn">Log In</button>
-        </div>
-        <div class="auth-form" id="authRegisterForm" hidden>
-          <input type="text" id="authRegUser" placeholder="Choose a username" autocomplete="username" maxlength="20">
-          <input type="password" id="authRegPass" placeholder="Choose a password" autocomplete="new-password">
-          <button class="auth-submit" id="authRegBtn">Register</button>
-        </div>
+  <!-- Auth modal (Clerk) -->
+  <div class="auth-modal" id="authModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+    <div class="auth-modal-backdrop" id="authModalBackdrop" tabindex="-1"></div>
+    <div class="auth-modal-dialog">
+      <div class="auth-modal-header">
+        <h2 class="auth-modal-title" id="authModalTitle">Sign in</h2>
+        <button type="button" class="auth-modal-close" id="authModalClose" aria-label="Close">&times;</button>
       </div>
-      <div id="authUser" hidden>
-        <span class="auth-username" id="authUsername"></span>
-        <span class="auth-role" id="authRole" hidden>admin</span>
-        <button class="auth-logout" id="authLogout">Log out</button>
+      <div class="auth-modal-body">
+        <div id="authGate">
+          <div id="neorgon-signin-mount" class="neorgon-clerk-mount"></div>
+        </div>
+        <div id="authUser" hidden>
+          <div class="auth-user-panel">
+            <p class="auth-signed-in-hint">Signed in</p>
+            <span class="sr-only" id="authUsername"></span>
+            <div id="neorgon-user-mount" class="neorgon-clerk-mount auth-user-button-host"></div>
+          </div>
+          <div class="legacy-link-card" id="legacyLinkSection" hidden>
+            <p class="legacy-link-hint">Link a password-only Neorgon username once (password is verified, not stored in the mapping).</p>
+            <div class="legacy-link-fields">
+              <label class="sr-only" for="legacyLinkUser">Legacy username</label>
+              <input type="text" id="legacyLinkUser" class="legacy-link-input" autocomplete="username" placeholder="Legacy username">
+              <label class="sr-only" for="legacyLinkPassword">Legacy password</label>
+              <input type="password" id="legacyLinkPassword" class="legacy-link-input" autocomplete="current-password" placeholder="Legacy password">
+            </div>
+            <button type="button" class="auth-submit legacy-link-btn" id="legacyLinkBtn">Link legacy account</button>
+            <div id="legacyLinkMessage" class="legacy-link-message" hidden></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-  <div class="auth-divider"></div>
 
   <main id="main">
     <div class="container">
@@ -100,7 +109,7 @@
       <div class="upload-panel" id="uploadPanel">
         <h3 class="upload-heading">Add Product</h3>
         <div id="uploadLoginPrompt">
-          <p class="upload-login-msg">Log in to add products.</p>
+          <p class="upload-login-msg">Sign in to add products.</p>
         </div>
         <div id="uploadZone" style="display:none">
           <div class="upload-form-grid">
@@ -123,6 +132,7 @@
               </select>
               <input type="text" id="productDescription" placeholder="Short description" maxlength="200" class="upload-input">
               <input type="text" id="productTags" placeholder="Tags (comma-separated)" maxlength="120" class="upload-input">
+              <input type="url" id="productUrl" class="upload-input" placeholder="https://… optional shop link" maxlength="2048" autocomplete="url">
               <select id="productVerdict" class="upload-input">
                 <option value="recommended">Recommended</option>
                 <option value="mixed">Mixed Feelings</option>
@@ -138,27 +148,69 @@
         </div>
       </div>
 
-      <!-- Controls -->
-      <div class="controls">
-        <div class="search-wrap">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="search" id="search-input" placeholder="Search products..." autocomplete="off">
+      <div id="freshness-section" class="freshness-host" hidden></div>
+
+      <div class="toolbar-sticky" role="region" aria-label="Search and filters">
+        <div class="toolbar-inner">
+          <div class="toolbar-primary-row">
+            <div class="toolbar-category-wrap">
+              <label class="sr-only" for="category-select">Category</label>
+              <select id="category-select" class="toolbar-select toolbar-category-select"></select>
+            </div>
+            <div class="search-wrap toolbar-search-grow">
+              <label class="sr-only" for="search-input">Search products</label>
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="search" id="search-input" placeholder="Search products, brands, tags…" autocomplete="off" enterkeyhint="search" inputmode="search">
+            </div>
+            <div class="toolbar-actions" role="toolbar" aria-label="Sort and layout">
+              <div class="sort-wrap toolbar-sort-inline">
+                <label class="sr-only" for="sort-select">Sort products</label>
+                <select id="sort-select" class="toolbar-select toolbar-sort-select" aria-label="Sort order">
+                  <option value="default">Default order</option>
+                  <option value="newest">Newest first</option>
+                  <option value="name">Name A–Z</option>
+                  <option value="love">Most loved</option>
+                  <option value="own">Most owned</option>
+                  <option value="want">Most wanted</option>
+                </select>
+              </div>
+              <div class="view-toggle view-toggle--icons" role="group" aria-label="Layout">
+                <button type="button" class="view-btn view-btn--icon active" data-view="grid" aria-pressed="true" title="Grid layout" aria-label="Grid layout">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                </button>
+                <button type="button" class="view-btn view-btn--icon" data-view="compact" aria-pressed="false" title="List layout" aria-label="List layout">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="20" height="20" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+                </button>
+              </div>
+              <button type="button" class="btn-clear-filters" id="clear-filters">Clear filters</button>
+            </div>
+          </div>
         </div>
-        <select id="sort-select">
-          <option value="default">Default order</option>
-          <option value="love">Most loved</option>
-          <option value="own">Most owned</option>
-          <option value="want">Most wanted</option>
-        </select>
       </div>
 
-      <div id="category-chips" class="chips"></div>
       <div class="result-meta"><span id="result-count"></span></div>
+      <div id="results-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
       <!-- Product grid -->
       <div id="product-grid" class="product-grid"></div>
     </div>
   </main>
+
+  <footer class="info-footer">
+    Part of <a class="footer-link" href="https://neorgon.com/">Neorgon</a>
+  </footer>
+
+  <!-- Product detail (full tips, notes, tags, community hacks) -->
+  <div id="product-detail-modal" class="product-detail-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+    <div class="product-detail-backdrop" id="product-detail-backdrop" tabindex="-1"></div>
+    <div class="product-detail-dialog">
+      <div class="product-detail-header">
+        <h2 class="product-detail-title" id="product-detail-title">Product</h2>
+        <button type="button" class="product-detail-close" id="product-detail-close" aria-label="Close details">&times;</button>
+      </div>
+      <div class="product-detail-body" id="product-detail-body"></div>
+    </div>
+  </div>
 
   <!-- Toast -->
   <div id="toast" class="toast"></div>

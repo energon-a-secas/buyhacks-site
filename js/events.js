@@ -1,12 +1,217 @@
 // ── Event handlers ───────────────────────────────────────────────────
-import { state, convex, api, visitorId, getLoggedInUser, setLoggedInUser, getUserRole, setUserRole, REMOVEBG_WORKER_URL } from "./state.js";
-import { renderChips, renderGrid } from "./render.js";
-import { toast, debounce } from "./utils.js";
+import { state, convex, api, visitorId, getLoggedInUser, setAuthSession, REMOVEBG_WORKER_URL } from "./state.js";
+import { catalogFromConvexRows } from "./filters.js";
+import { normalizeCategoryId } from "./data.js";
+import { renderChips, renderGrid, renderFreshnessSection, renderViewToggle, renderProductDetailModal } from "./render.js";
+import { toast, debounce, sanitizeExternalUrl } from "./utils.js";
+import { writeStateToUrl } from "./url-sync.js";
 
-/** Load votes, hacks, and user products from Convex. */
+const pushUrl = debounce(() => writeStateToUrl(), 400);
+
+let buyhacksClerk = null;
+
+async function refreshAdminFlag() {
+  if (!getLoggedInUser()) {
+    setAuthSession(null, false);
+    return;
+  }
+  try {
+    const isAd = await convex.query(api.auth.isAdmin, {});
+    setAuthSession(state.authLabel, !!isAd);
+  } catch {
+    setAuthSession(state.authLabel, false);
+  }
+}
+
+async function refreshLegacyLinkSection() {
+  const section = document.getElementById("legacyLinkSection");
+  const msg = document.getElementById("legacyLinkMessage");
+  if (!section) return;
+  if (!getLoggedInUser()) {
+    section.hidden = true;
+    return;
+  }
+  try {
+    const link = await convex.query(api.migration.myAccountLink, {});
+    section.hidden = !!link;
+    if (msg) {
+      msg.hidden = true;
+      msg.textContent = "";
+      msg.classList.remove("legacy-link-message--err");
+    }
+  } catch {
+    section.hidden = true;
+  }
+}
+
+async function onLegacyLinkClick() {
+  const userEl = document.getElementById("legacyLinkUser");
+  const passEl = document.getElementById("legacyLinkPassword");
+  const msg = document.getElementById("legacyLinkMessage");
+  const section = document.getElementById("legacyLinkSection");
+  const username = userEl?.value?.trim() || "";
+  const password = passEl?.value || "";
+  if (!username || !password) {
+    if (msg) {
+      msg.textContent = "Enter legacy username and password.";
+      msg.classList.add("legacy-link-message--err");
+      msg.hidden = false;
+    }
+    return;
+  }
+  try {
+    const res = await convex.mutation(api.migration.linkLegacyAccount, { username, password });
+    if (res.ok) {
+      if (msg) {
+        msg.textContent = `Linked @${res.legacyUsername}.`;
+        msg.classList.remove("legacy-link-message--err");
+        msg.hidden = false;
+      }
+      if (userEl) userEl.value = "";
+      if (passEl) passEl.value = "";
+      if (section) section.hidden = true;
+      toast("Legacy account linked");
+    } else if (msg) {
+      msg.textContent = res.error || "Link failed";
+      msg.classList.add("legacy-link-message--err");
+      msg.hidden = false;
+    }
+  } catch {
+    if (msg) {
+      msg.textContent = "Link failed. Try again.";
+      msg.classList.add("legacy-link-message--err");
+      msg.hidden = false;
+    }
+  }
+}
+
+/** Clerk dark theme + accent (SignIn, UserButton, OAuth, loading states). */
+const BUYHACKS_CLERK_APPEARANCE = {
+  baseTheme: "dark",
+  variables: {
+    colorPrimary: "#f59e0b",
+    colorPrimaryForeground: "#0c0a06",
+    colorForeground: "#f9f9f9",
+    colorDanger: "#f87171",
+    colorSuccess: "#22c55e",
+    colorWarning: "#fbbf24",
+    colorBackground: "#121828",
+    colorInputBackground: "rgba(255, 255, 255, 0.08)",
+    colorInputForeground: "#f9f9f9",
+    colorText: "#f9f9f9",
+    colorTextSecondary: "rgba(202, 202, 202, 0.92)",
+    colorShimmer: "rgba(251, 191, 36, 0.35)",
+    colorNeutral: "rgba(255, 255, 255, 0.08)",
+    borderRadius: "10px",
+    fontFamily: "'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
+  elements: {
+    formButtonPrimary: {
+      backgroundColor: "#f59e0b",
+      color: "#0c0a06",
+      fontWeight: "600",
+      boxShadow: "0 1px 0 rgba(255, 255, 255, 0.12) inset",
+    },
+    formButtonReset: {
+      color: "rgba(202, 202, 202, 0.95)",
+    },
+    socialButtonsBlockButton: {
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
+      border: "1px solid rgba(255, 255, 255, 0.14)",
+      color: "#f9f9f9",
+    },
+    socialButtonsBlockButtonText: {
+      color: "#f9f9f9",
+    },
+    alternativeMethodsBlockButton: {
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
+      border: "1px solid rgba(255, 255, 255, 0.14)",
+      color: "#f9f9f9",
+    },
+    card: {
+      backgroundColor: "transparent",
+      boxShadow: "none",
+      width: "100%",
+    },
+    rootBox: {
+      width: "100%",
+      maxWidth: "400px",
+      marginLeft: "auto",
+      marginRight: "auto",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+    },
+  },
+};
+
+/** Clerk + Convex JWT (Neorgon shared client). Call from app.js before bindEvents. */
+export async function initBuyhacksAuth() {
+  const pk = document.querySelector('meta[name="clerk-publishable-key"]')?.content?.trim();
+  if (!pk) {
+    console.warn("BuyHacks: add clerk-publishable-key meta for sign-in.");
+    return;
+  }
+  try {
+    const { initNeorgonClerkConvex, neorgonDisplayLabel } = await import("./vendor/neorgon-auth.js");
+    buyhacksClerk = await initNeorgonClerkConvex({
+      convex,
+      publishableKey: pk,
+      signInHost: "#neorgon-signin-mount",
+      userButtonHost: "#neorgon-user-mount",
+      clerkAppearance: BUYHACKS_CLERK_APPEARANCE,
+      userButtonProps: {
+        showName: true,
+      },
+      signInProps: {
+        appearance: {
+          ...BUYHACKS_CLERK_APPEARANCE,
+          layout: { unsafe_disableDevelopmentModeWarnings: true },
+        },
+      },
+      onSession: ({ clerk, hasSession }) => {
+        buyhacksClerk = clerk;
+        if (hasSession) {
+          setAuthSession(neorgonDisplayLabel(clerk), false);
+          void refreshAdminFlag();
+          void refreshLegacyLinkSection();
+        } else {
+          setAuthSession(null, false);
+        }
+        renderAuthState();
+        updateUploadZoneVisibility();
+        refreshBrowseUi();
+        if (hasSession) closeAuthModal();
+      },
+    });
+  } catch (e) {
+    console.warn("BuyHacks: Clerk init failed", e);
+  }
+}
+
+function refreshBrowseUi() {
+  renderChips();
+  renderFreshnessSection();
+  renderViewToggle();
+  renderGrid();
+  pushUrl();
+}
+
+export function syncControlsFromState() {
+  state.activeCategory = normalizeCategoryId(state.activeCategory);
+  const search = document.getElementById("search-input");
+  if (search) search.value = state.searchQuery;
+  const sort = document.getElementById("sort-select");
+  if (sort) sort.value = state.sortBy;
+  const category = document.getElementById("category-select");
+  if (category && category.options.length) category.value = state.activeCategory;
+  renderViewToggle();
+}
+
+/** Load votes, hacks, user products, and freshness feed from Convex. */
 export async function loadRemoteData() {
   try {
-    const [voteData, hackData, userProducts] = await Promise.all([
+    const [voteData, hackData, productRows] = await Promise.all([
       convex.query(api.votes.getVotes, { visitorId }),
       convex.query(api.hacks.getHacks, {}),
       convex.query(api.products.list, {}),
@@ -14,12 +219,16 @@ export async function loadRemoteData() {
     state.voteCounts = voteData.counts;
     state.myVotes = voteData.mine;
     state.hacks = hackData;
-    state.userProducts = userProducts || [];
-    renderChips();
-    renderGrid();
+    state.products = catalogFromConvexRows(productRows || []);
   } catch {
-    // Convex not configured yet — run with local-only data
+    return;
   }
+  try {
+    state.freshnessFeed = await convex.query(api.freshness.getFeed, { tipsLimit: 14, productsLimit: 6 });
+  } catch {
+    state.freshnessFeed = { recentTips: [], newestProducts: [] };
+  }
+  refreshBrowseUi();
 }
 
 /** Handle vote button clicks. */
@@ -52,7 +261,7 @@ async function handleDeleteHack(hackId) {
   const username = getLoggedInUser();
   if (!username) { toast("Login required"); return; }
   try {
-    const result = await convex.mutation(api.hacks.deleteHack, { hackId, adminUsername: username });
+    const result = await convex.mutation(api.hacks.deleteHack, { hackId });
     if (result.ok) {
       toast("Tip deleted");
       await loadRemoteData();
@@ -70,7 +279,7 @@ async function handleDeleteProduct(productId) {
   const username = getLoggedInUser();
   if (!username) { toast("Login required"); return; }
   try {
-    const result = await convex.mutation(api.products.deleteProduct, { productId, adminUsername: username });
+    const result = await convex.mutation(api.products.deleteProduct, { productId });
     if (result.ok) {
       toast("Product deleted");
       await loadRemoteData();
@@ -123,9 +332,7 @@ function setupUploadPanel() {
       const description = document.getElementById("productDescription")?.value.trim();
       const tagsRaw = document.getElementById("productTags")?.value.trim();
       const verdict = document.getElementById("productVerdict")?.value;
-      const username = getLoggedInUser();
-
-      if (!username) { toast("Login to add products"); return; }
+      if (!getLoggedInUser()) { toast("Sign in to add products"); return; }
       if (!name) { toast("Product name is required"); return; }
       if (!brand) { toast("Brand is required"); return; }
       if (!description) { toast("Description is required"); return; }
@@ -168,10 +375,13 @@ function setupUploadPanel() {
           storageId = sid;
         }
 
+        const productUrlRaw = document.getElementById("productUrl")?.value?.trim() || "";
+        const productUrl = sanitizeExternalUrl(productUrlRaw) || undefined;
+
         const result = await convex.mutation(api.products.saveProduct, {
           name, brand, category, tags, description, verdict,
+          productUrl,
           storageId,
-          uploadedBy: username,
         });
 
         if (result.ok) {
@@ -182,6 +392,8 @@ function setupUploadPanel() {
           document.getElementById("productBrand").value = "";
           document.getElementById("productDescription").value = "";
           document.getElementById("productTags").value = "";
+          const pu = document.getElementById("productUrl");
+          if (pu) pu.value = "";
           if (previewImg) { previewImg.style.display = "none"; previewImg.src = ""; }
           if (dropZone) dropZone.style.display = "";
           await loadRemoteData();
@@ -211,7 +423,7 @@ function updateUploadZoneVisibility() {
 async function handleHackSubmit(slug, text) {
   const user = getLoggedInUser();
   if (!user) {
-    toast("Login to share tips");
+    toast("Sign in to share tips");
     return;
   }
   if (!text.trim()) return;
@@ -220,7 +432,6 @@ async function handleHackSubmit(slug, text) {
     const result = await convex.mutation(api.hacks.submitHack, {
       productSlug: slug,
       text: text.trim(),
-      submittedBy: user,
       visitorId,
     });
     if (result.ok) {
@@ -234,68 +445,67 @@ async function handleHackSubmit(slug, text) {
   }
 }
 
-/** Update auth UI state. */
-function renderAuthState(username, role) {
-  const loggedIn = !!username;
+/** Match modal title to Clerk hash routing (sign-in vs sign-up). */
+function syncAuthModalTitleFromClerkRoute() {
+  const modal = document.getElementById("authModal");
+  const title = document.getElementById("authModalTitle");
+  if (!modal?.classList.contains("open") || !title) return;
+  if (getLoggedInUser()) {
+    title.textContent = "Account";
+    return;
+  }
+  const h = (window.location.hash || "").toLowerCase();
+  if (h.includes("sign-up") || h.includes("signup") || h.includes("sign_up")) title.textContent = "Create account";
+  else title.textContent = "Sign in";
+}
+
+function openAuthModal() {
+  const modal = document.getElementById("authModal");
+  if (!modal) return;
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("auth-modal-open");
+  syncAuthModalTitleFromClerkRoute();
+  requestAnimationFrame(() => {
+    syncAuthModalTitleFromClerkRoute();
+    requestAnimationFrame(() => syncAuthModalTitleFromClerkRoute());
+  });
+  if (getLoggedInUser()) void refreshLegacyLinkSection();
+}
+
+function closeAuthModal() {
+  const modal = document.getElementById("authModal");
+  if (!modal) return;
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("auth-modal-open");
+}
+
+/** Update auth UI state (Clerk session). */
+function renderAuthState() {
+  const loggedIn = !!getLoggedInUser();
   const authGate = document.getElementById("authGate");
   const authUser = document.getElementById("authUser");
   const authToggle = document.getElementById("authToggle");
   const authUsername = document.getElementById("authUsername");
-  const authRole = document.getElementById("authRole");
+  const authModalTitle = document.getElementById("authModalTitle");
   if (!authGate || !authUser) return;
   authGate.hidden = loggedIn;
   authUser.hidden = !loggedIn;
   if (authToggle) authToggle.classList.toggle("logged-in", loggedIn);
-  if (loggedIn) {
-    if (authUsername) authUsername.textContent = username;
-    if (authRole) authRole.hidden = role !== "admin";
-  }
-}
-
-/** Handle auth (login/register). */
-async function handleAuth(action) {
-  const isLogin = action === "login";
-  const userEl = document.getElementById(isLogin ? "authLoginUser" : "authRegUser");
-  const passEl = document.getElementById(isLogin ? "authLoginPass" : "authRegPass");
-  if (!userEl || !passEl) return;
-
-  const username = userEl.value.trim();
-  const password = passEl.value;
-  if (!username || !password) {
-    toast("Enter username and password");
-    return;
-  }
-
-  try {
-    const fn = isLogin ? api.auth.login : api.auth.register;
-    const result = await convex.mutation(fn, { username, password });
-    if (result.ok) {
-      const role = result.role || "user";
-      setLoggedInUser(result.username);
-      setUserRole(role);
-      renderAuthState(result.username, role);
-      toast(isLogin ? `Welcome back, ${result.username}` : `Welcome, ${result.username}!`);
-      updateUploadZoneVisibility();
-      renderGrid();
-      userEl.value = "";
-      passEl.value = "";
-    } else {
-      toast(result.error);
-    }
-  } catch {
-    toast("Auth failed — check Convex connection");
+  if (loggedIn && authUsername) authUsername.textContent = state.authLabel || "";
+  if (authModalTitle) {
+    if (loggedIn) authModalTitle.textContent = "Account";
+    else if (document.getElementById("authModal")?.classList.contains("open")) syncAuthModalTitleFromClerkRoute();
+    else authModalTitle.textContent = "Sign in";
   }
 }
 
 /** Bind all event listeners. */
 export function bindEvents() {
-  // Category chips
-  document.getElementById("category-chips")?.addEventListener("click", (e) => {
-    const btn = e.target.closest(".chip");
-    if (!btn) return;
-    state.activeCategory = btn.dataset.category;
-    renderChips();
-    renderGrid();
+  document.getElementById("category-select")?.addEventListener("change", (e) => {
+    state.activeCategory = e.target.value;
+    refreshBrowseUi();
   });
 
   // Search
@@ -306,6 +516,7 @@ export function bindEvents() {
       debounce((e) => {
         state.searchQuery = e.target.value;
         renderGrid();
+        pushUrl();
       }, 300)
     );
   }
@@ -314,45 +525,96 @@ export function bindEvents() {
   document.getElementById("sort-select")?.addEventListener("change", (e) => {
     state.sortBy = e.target.value;
     renderGrid();
+    pushUrl();
   });
 
-  // Vote buttons + hack toggles + hack forms (delegated)
-  document.getElementById("product-grid")?.addEventListener("click", (e) => {
-    // Vote button
+  document.getElementById("clear-filters")?.addEventListener("click", () => {
+    state.activeCategory = "all";
+    state.searchQuery = "";
+    state.activeTags = [];
+    state.verdictFilter = "all";
+    state.sortBy = "default";
+    state.viewMode = "grid";
+    state.detailSlug = null;
+    const search = document.getElementById("search-input");
+    if (search) search.value = "";
+    const sort = document.getElementById("sort-select");
+    if (sort) sort.value = "default";
+    syncControlsFromState();
+    refreshBrowseUi();
+  });
+
+  window.addEventListener("resize", debounce(() => syncControlsFromState(), 200));
+
+  document.querySelectorAll(".view-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.view;
+      if (v !== "grid" && v !== "compact") return;
+      state.viewMode = v;
+      renderViewToggle();
+      renderGrid();
+      pushUrl();
+    });
+  });
+
+  function closeProductDetail() {
+    state.detailSlug = null;
+    renderProductDetailModal();
+  }
+
+  document.getElementById("product-detail-close")?.addEventListener("click", closeProductDetail);
+  document.getElementById("product-detail-backdrop")?.addEventListener("click", closeProductDetail);
+
+  document.getElementById("product-detail-modal")?.addEventListener("change", (e) => {
+    const t = e.target;
+    if (t && t.id === "detail-include-product-links") {
+      state.detailIncludeProductLinks = !!t.checked;
+      try {
+        localStorage.setItem("buyhacks-detail-include-links", state.detailIncludeProductLinks ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      renderProductDetailModal();
+    }
+  });
+
+  // Open detail modal (anywhere), votes + hacks only inside grid or detail panel
+  document.body.addEventListener("click", (e) => {
+    const openBtn = e.target.closest("[data-open-product]");
+    if (openBtn) {
+      const slug = openBtn.getAttribute("data-open-product");
+      if (slug) {
+        state.detailSlug = slug;
+        renderProductDetailModal();
+      }
+      return;
+    }
+
+    const scope = e.target.closest("#product-grid, #product-detail-body");
+    if (!scope) return;
+
     const voteBtn = e.target.closest(".vote-btn");
     if (voteBtn) {
       handleVote(voteBtn.dataset.slug, voteBtn.dataset.type);
       return;
     }
 
-    // Admin: delete hack
     const hackDel = e.target.closest(".hack-delete");
     if (hackDel) {
       handleDeleteHack(hackDel.dataset.hackId);
       return;
     }
 
-    // Admin: delete product
     const prodDel = e.target.closest(".product-delete");
     if (prodDel) {
       handleDeleteProduct(prodDel.dataset.productId);
       return;
     }
-
-    // Hack toggle
-    const hackToggle = e.target.closest(".hacks-toggle");
-    if (hackToggle) {
-      const slug = hackToggle.dataset.slug;
-      if (state.expandedHacks.has(slug)) state.expandedHacks.delete(slug);
-      else state.expandedHacks.add(slug);
-      renderGrid();
-      return;
-    }
   });
 
-  // Hack form submit (delegated)
-  document.getElementById("product-grid")?.addEventListener("submit", (e) => {
+  document.body.addEventListener("submit", (e) => {
     if (!e.target.classList.contains("hack-form")) return;
+    if (!e.target.closest("#product-grid, #product-detail-body")) return;
     e.preventDefault();
     const slug = e.target.dataset.slug;
     const input = e.target.querySelector(".hack-input");
@@ -368,58 +630,31 @@ export function bindEvents() {
     if (panel) panel.classList.toggle("open");
   });
 
-  // Auth toggle
+  // Auth modal
   document.getElementById("authToggle")?.addEventListener("click", () => {
-    const panel = document.getElementById("authPanel");
-    panel?.classList.toggle("open");
-    if (panel?.classList.contains("open")) {
-      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    const modal = document.getElementById("authModal");
+    if (modal?.classList.contains("open")) closeAuthModal();
+    else openAuthModal();
+  });
+  document.getElementById("authModalBackdrop")?.addEventListener("click", () => closeAuthModal());
+  document.getElementById("authModalClose")?.addEventListener("click", () => closeAuthModal());
+  window.addEventListener("hashchange", () => syncAuthModalTitleFromClerkRoute());
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const detail = document.getElementById("product-detail-modal");
+    if (detail?.classList.contains("open")) {
+      state.detailSlug = null;
+      renderProductDetailModal();
+      return;
     }
+    const modal = document.getElementById("authModal");
+    if (modal?.classList.contains("open")) closeAuthModal();
   });
 
-  // Auth tab switching
-  document.querySelectorAll(".auth-tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".auth-tab").forEach(t => t.classList.remove("active"));
-      tab.classList.add("active");
-      const isLogin = tab.dataset.tab === "login";
-      const loginForm = document.getElementById("authLoginForm");
-      const regForm = document.getElementById("authRegisterForm");
-      if (loginForm) loginForm.hidden = !isLogin;
-      if (regForm) regForm.hidden = isLogin;
-    });
+  document.getElementById("legacyLinkBtn")?.addEventListener("click", () => {
+    void onLegacyLinkClick();
   });
-
-  // Auth buttons
-  document.getElementById("authLoginBtn")?.addEventListener("click", () => handleAuth("login"));
-  document.getElementById("authRegBtn")?.addEventListener("click", () => handleAuth("register"));
-  document.getElementById("authLogout")?.addEventListener("click", () => {
-    setLoggedInUser(null);
-    setUserRole(null);
-    renderAuthState(null);
-    updateUploadZoneVisibility();
-    renderGrid();
-    toast("Logged out");
-  });
-
-  // Enter key on auth forms
-  ["authLoginUser", "authLoginPass"].forEach(id => {
-    document.getElementById(id)?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") handleAuth("login");
-    });
-  });
-  ["authRegUser", "authRegPass"].forEach(id => {
-    document.getElementById(id)?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") handleAuth("register");
-    });
-  });
-
-  // Upload panel
   setupUploadPanel();
-
-  // Restore auth state on load
-  const savedUser = getLoggedInUser();
-  if (savedUser) renderAuthState(savedUser, getUserRole());
   updateUploadZoneVisibility();
 
   // Scroll to top

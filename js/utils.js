@@ -27,6 +27,20 @@ export function debounce(fn, ms) {
   };
 }
 
+/** Allow only http(s) URLs for outbound product links. */
+export function sanitizeExternalUrl(raw) {
+  const t = String(raw || "").trim();
+  if (!t || t.length > 2048) return null;
+  if (!/^https?:\/\//i.test(t)) return null;
+  try {
+    const u = new URL(t);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
 /** Format a timestamp to relative time. */
 export function timeAgo(ts) {
   const diff = Date.now() - ts;

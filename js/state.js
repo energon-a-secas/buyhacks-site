@@ -2,7 +2,7 @@
 import { ConvexHttpClient } from "https://esm.sh/convex@1.21.0/browser";
 
 // ── Convex client ────────────────────────────────────────────────────
-// Replace with your own Convex deployment URL after `npx convex dev`
+// Must match `CONVEX_URL` in `.env.local` (run `npx convex dev` to confirm).
 const CONVEX_URL = "https://formal-lemur-640.convex.cloud";
 export const convex = new ConvexHttpClient(CONVEX_URL);
 
@@ -12,10 +12,24 @@ export const REMOVEBG_WORKER_URL = "https://buyhacks-removebg.neorgon.workers.de
 
 // Function references (strings at runtime — no build step needed)
 export const api = {
-  auth:     { register: "auth:register", login: "auth:login", getRole: "auth:getRole", setRole: "auth:setRole" },
+  auth: {
+    register: "auth:register",
+    login: "auth:login",
+    getRole: "auth:getRole",
+    setRole: "auth:setRole",
+    isAdmin: "auth:isAdmin",
+  },
   votes:    { getVotes: "votes:getVotes", toggleVote: "votes:toggleVote" },
   hacks:    { getHacks: "hacks:getHacks", submitHack: "hacks:submitHack", deleteHack: "hacks:deleteHack" },
   products: { list: "products:list", getUploadUrl: "products:getUploadUrl", saveProduct: "products:saveProduct", deleteProduct: "products:deleteProduct" },
+  freshness: { getFeed: "freshness:getFeed" },
+  migration: {
+    myAccountLink: "migration:myAccountLink",
+    linkLegacyAccount: "migration:linkLegacyAccount",
+    getUserSetting: "migration:getUserSetting",
+    setUserSetting: "migration:setUserSetting",
+    listUserSettings: "migration:listUserSettings",
+  },
 };
 
 // ── Visitor ID (persistent, used for vote dedup) ─────────────────────
@@ -29,30 +43,52 @@ function getVisitorId() {
 }
 export const visitorId = getVisitorId();
 
-// ── Auth state (persisted in localStorage) ───────────────────────────
+// ── Clerk session (set by events.js via initBuyhacksAuth) ─────────────
+export function isSignedIn() {
+  return !!state.authLabel;
+}
+
+export function setAuthSession(label, isAdmin) {
+  state.authLabel = label || null;
+  state.isConvexAdmin = !!isAdmin;
+}
+
+/** @deprecated legacy localStorage; unused with Clerk — kept so imports do not break during transition */
 export function getLoggedInUser() {
-  return localStorage.getItem("buyhacks-user") || null;
+  return state.authLabel;
 }
-export function setLoggedInUser(username) {
-  if (username) localStorage.setItem("buyhacks-user", username);
-  else localStorage.removeItem("buyhacks-user");
-}
+export function setLoggedInUser() {}
 export function getUserRole() {
-  return localStorage.getItem("buyhacks-role") || "user";
+  return state.isConvexAdmin ? "admin" : "user";
 }
-export function setUserRole(role) {
-  if (role && role !== "user") localStorage.setItem("buyhacks-role", role);
-  else localStorage.removeItem("buyhacks-role");
-}
+export function setUserRole() {}
 
 // ── Mutable application state ────────────────────────────────────────
 export const state = {
   activeCategory: "all",
   searchQuery: "",
-  sortBy: "default",       // "default" | "love" | "own" | "want"
-  voteCounts: {},           // { slug: { love: N, own: N, want: N } }
-  myVotes: {},              // { slug: ["love", "want", ...] }
-  hacks: {},                // { slug: [{ text, submittedBy, createdAt }] }
-  expandedHacks: new Set(), // slugs with hack panel open
-  userProducts: [],          // products from Convex (user-submitted)
+  sortBy: "default",
+  activeTags: [],
+  verdictFilter: "all",
+  /** Product slug when the full-detail modal is open (grid + list). */
+  detailSlug: null,
+  /** When true, detail modal shows shop/product URLs when the item has one. */
+  detailIncludeProductLinks: false,
+  viewMode: "grid",
+  voteCounts: {},
+  myVotes: {},
+  hacks: {},
+  /** Mapped Convex `products:list` rows (curated catalog + community). */
+  products: [],
+  freshnessFeed: { recentTips: [], newestProducts: [] },
+  authLabel: null,
+  isConvexAdmin: false,
 };
+
+try {
+  if (typeof localStorage !== "undefined") {
+    state.detailIncludeProductLinks = localStorage.getItem("buyhacks-detail-include-links") === "1";
+  }
+} catch {
+  /* ignore */
+}

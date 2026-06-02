@@ -1,6 +1,15 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
+function displayFromIdentity(identity: { name?: string; email?: string; subject: string }) {
+  if (identity.name && String(identity.name).trim()) return String(identity.name).trim();
+  if (identity.email) {
+    const local = identity.email.split("@")[0];
+    if (local) return local;
+  }
+  return identity.subject.slice(0, 12);
+}
+
 /** Get all hacks grouped by product. */
 export const getHacks = query({
   args: {},
@@ -29,13 +38,15 @@ export const getHacks = query({
 
 /** Admin-only: delete a hack by its _id. */
 export const deleteHack = mutation({
-  args: { hackId: v.id("hacks"), adminUsername: v.string() },
+  args: { hackId: v.id("hacks") },
   handler: async (ctx, args) => {
-    const admin = await ctx.db
-      .query("users")
-      .withIndex("by_username", (q) => q.eq("username", args.adminUsername.trim().toLowerCase()))
-      .first();
-    if (!admin || admin.role !== "admin") {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return { ok: false, error: "Not authenticated" };
+    const admins = (process.env.ADMIN_SUBJECTS || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!admins.includes(identity.subject)) {
       return { ok: false, error: "Not authorized" };
     }
     const hack = await ctx.db.get(args.hackId);
@@ -50,10 +61,14 @@ export const submitHack = mutation({
   args: {
     productSlug: v.string(),
     text: v.string(),
-    submittedBy: v.string(),
     visitorId: v.string(),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return { ok: false, error: "Sign in to share tips" };
+    }
+    const submittedBy = displayFromIdentity(identity);
     const trimmed = args.text.trim();
     if (trimmed.length === 0 || trimmed.length > 280) {
       return { ok: false, error: "Hack must be 1-280 characters" };
@@ -73,7 +88,7 @@ export const submitHack = mutation({
     await ctx.db.insert("hacks", {
       productSlug: args.productSlug,
       text: trimmed,
-      submittedBy: args.submittedBy,
+      submittedBy,
       visitorId: args.visitorId,
       createdAt: Date.now(),
     });
