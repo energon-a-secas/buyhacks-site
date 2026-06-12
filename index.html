@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="clerk-publishable-key" content="pk_test_bGlrZWQtcHVwLTE3LmNsZXJrLmFjY291bnRzLmRldiQ">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.convex.cloud data: blob: https://pub-b597cd281a384f98a47e1f043a6c4160.r2.dev https://img.clerk.com; connect-src 'self' https://*.convex.cloud https://*.workers.dev https://*.clerk.accounts.dev https://clerk-telemetry.com https://api.clerk.com https://challenges.cloudflare.com; frame-src 'self' https://challenges.cloudflare.com https://*.clerk.accounts.dev; worker-src 'self' blob:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://pub-b597cd281a384f98a47e1f043a6c4160.r2.dev; img-src 'self' https://*.convex.cloud data: blob: https://pub-b597cd281a384f98a47e1f043a6c4160.r2.dev https://img.clerk.com; connect-src 'self' https://*.convex.cloud https://*.workers.dev https://*.clerk.accounts.dev https://*.accounts.dev https://clerk-telemetry.com https://api.clerk.com https://challenges.cloudflare.com; frame-src 'self' https://challenges.cloudflare.com https://*.clerk.accounts.dev https://*.accounts.dev; worker-src 'self' blob:">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BuyHacks | Product Life Hacks</title>
   <meta name="description" content="Curated product showcase with community votes and life-hack tips. Browse 24 tested products, vote love/own/want, and share your best tips">
@@ -88,13 +88,13 @@
           </div>
           <div class="legacy-link-card" id="legacyLinkSection" hidden>
             <p class="legacy-link-hint">Link a password-only Neorgon username once (password is verified, not stored in the mapping).</p>
-            <div class="legacy-link-fields">
+            <form class="legacy-link-fields" id="legacyLinkForm" onsubmit="return false">
               <label class="sr-only" for="legacyLinkUser">Legacy username</label>
               <input type="text" id="legacyLinkUser" class="legacy-link-input" autocomplete="username" placeholder="Legacy username">
               <label class="sr-only" for="legacyLinkPassword">Legacy password</label>
               <input type="password" id="legacyLinkPassword" class="legacy-link-input" autocomplete="current-password" placeholder="Legacy password">
-            </div>
-            <button type="button" class="auth-submit legacy-link-btn" id="legacyLinkBtn">Link legacy account</button>
+              <button type="button" class="auth-submit legacy-link-btn" id="legacyLinkBtn">Link legacy account</button>
+            </form>
             <div id="legacyLinkMessage" class="legacy-link-message" hidden></div>
           </div>
         </div>
