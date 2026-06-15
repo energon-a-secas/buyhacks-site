@@ -146,7 +146,7 @@ function voteButtonsHtml(product, counts, mine) {
   const name = escHtml(product.name);
   const btn = (type, label, count, svg) => {
     const active = mine.includes(type);
-    return `<button type="button" class="vote-btn${active ? " active" : ""}" data-slug="${product.slug}" data-type="${type}" title="${label}" aria-label="${label} — ${name} (${count})" aria-pressed="${active ? "true" : "false"}">
+    return `<button type="button" class="vote-btn${active ? " active" : ""}" data-slug="${product.slug}" data-type="${type}" title="${label}" aria-label="${label}, ${name}, ${count} votes" aria-pressed="${active ? "true" : "false"}">
           ${svg}
           <span>${count}</span>
         </button>`;

@@ -469,7 +469,7 @@ async function handleHackSubmit(slug, text, submitBtn) {
       toast(result.error);
     }
   } catch {
-    toast("Could not submit tip — check Convex connection");
+    toast("Could not submit tip. Check your connection and try again.");
   } finally {
     // loadRemoteData re-renders the panel, but restore in case the node persists.
     if (submitBtn && submitBtn.isConnected) {
