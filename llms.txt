@@ -1,0 +1,12 @@
+# BuyHacks
+
+> Curated product showcase with community votes and life-hack tips
+
+- Live: https://buyhacks.neorgon.com/
+- Part of the Neorgon tool suite (free, no signup, runs in your browser): https://neorgon.com/
+- Keywords: products, votes, tips, convex, auth
+
+## More Neorgon tools
+
+- [Neorgon hub](https://neorgon.com/): Browse and launch every tool from one page.
+- [Full suite index](https://neorgon.com/llms.txt): Machine-readable list of every Neorgon tool.
