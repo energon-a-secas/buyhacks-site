@@ -10,6 +10,9 @@ html { height: 100%; }
   --border-subtle: rgba(255,255,255,.07);
   --border: rgba(255,255,255,.1);
   --border-strong: rgba(255,255,255,.22);
+  /* Sticky stack: the 56px app header plus the filter bar. Anything scrolled
+     to by anchor has to clear both, or it lands underneath the bar. */
+  --sticky-stack: 140px;
   --text-primary: #f9f9f9;
   --text-secondary: #cacaca;
   --text-muted: rgba(255,255,255,.55);
@@ -612,7 +615,9 @@ select.upload-input {
 
 /* ── Product card ─────────────────────────────────────────── */
 .product-card {
-  scroll-margin-top: 120px;
+  /* Clears the whole sticky stack: app header + filter bar. The freshness
+     panel's #product-<slug> jumps landed under the bar at the old 120px. */
+  scroll-margin-top: var(--sticky-stack);
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -1047,29 +1052,6 @@ button:active, .btn:active {
 }
 .toast.visible { opacity: 1; transform: translateY(0); }
 
-/* ── Scroll to top ────────────────────────────────────────── */
-.scroll-top {
-  position: fixed;
-  bottom: 24px;
-  left: 24px;
-  z-index: 100;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur), color var(--dur);
-}
-.scroll-top.visible { opacity: 1; pointer-events: auto; }
-.scroll-top:hover { color: var(--text-primary); }
-
 /* ── Entrance animation ───────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -1141,13 +1123,26 @@ button:active, .btn:active {
 
 .toolbar-sticky {
   position: sticky;
-  top: 68px;
+  /* Seats against the header the site actually runs. This is app mode (56px),
+     not the 68px content bar — a hardcoded 68 left a 12px band of card content
+     scrolling through under the header. */
+  top: var(--header-h-app, 56px);
+  transition: top .26s var(--header-ease, ease);
   z-index: 150;
   background: color-mix(in oklch, var(--bg) 94%, transparent);
   backdrop-filter: blur(10px);
   margin: 0 calc(-1 * var(--space-6)) var(--space-4);
   padding: var(--space-3) var(--space-6) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
+}
+
+/* app mode slides the header out on scroll down; without this the toolbar keeps
+   its offset and the vacated band fills with scrolling cards. `main` is a general
+   sibling of the bar, so no JS coupling is needed. */
+.header-bar[data-header-mode="app"].header-hidden ~ main .toolbar-sticky {
+  top: 0;
+  transition-duration: .2s;
+  transition-timing-function: var(--header-ease-in, ease);
 }
 
 .toolbar-inner {
@@ -1358,12 +1353,16 @@ button:active, .btn:active {
 .freshness-grid {
   display: grid;
   gap: var(--space-6) var(--space-8);
+  /* Grid items default to min-width:auto, so the longest product name set the
+     track's floor and pushed the page 73px wider than the phone. The name
+     already knows how to ellipsize — it just never got the chance. */
+  grid-template-columns: minmax(0, 1fr);
   padding: var(--space-6) var(--space-6) var(--space-4);
   border-top: 1px solid var(--border-subtle);
 }
 @media (min-width: 760px) {
   .freshness-grid {
-    grid-template-columns: 1.1fr 1fr;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   }
   /* Vertical rule between the two columns instead of a card-edge stripe */
   .freshness-grid .freshness-col:first-child {
@@ -1492,7 +1491,7 @@ button:active, .btn:active {
   gap: var(--space-3) var(--space-4);
   align-items: start;
   padding: var(--space-3) var(--space-4);
-  scroll-margin-top: 100px;
+  scroll-margin-top: var(--sticky-stack);
 }
 
 .row-thumb {
@@ -1889,6 +1888,17 @@ body.product-detail-open {
 }
 
 @media (max-width: 600px) {
+  /* The row flips to a column here, which makes the main axis vertical — so the
+     row-era flex-basis values were being applied as heights (a 160px select, a
+     200px search box, a 451px sticky bar eating 60% of the phone). */
+  .toolbar-category-wrap,
+  .toolbar-search-grow {
+    flex: 0 0 auto;
+  }
+  /* Header + the taller stacked bar. */
+  :root {
+    --sticky-stack: 235px;
+  }
   .toolbar-actions {
     width: 100%;
     margin-left: 0;
@@ -1914,10 +1924,6 @@ body.product-detail-open {
   }
 }
 
-.scroll-top {
-  bottom: max(24px, env(safe-area-inset-bottom, 0px));
-  left: max(24px, env(safe-area-inset-left, 0px));
-}
 .toast {
   bottom: max(24px, env(safe-area-inset-bottom, 0px));
   right: max(24px, env(safe-area-inset-right, 0px));

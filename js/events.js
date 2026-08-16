@@ -682,15 +682,4 @@ export function bindEvents() {
   });
   setupUploadPanel();
   updateUploadZoneVisibility();
-
-  // Scroll to top
-  const scrollBtn = document.getElementById("scroll-top");
-  if (scrollBtn) {
-    window.addEventListener("scroll", () => {
-      scrollBtn.classList.toggle("visible", window.scrollY > 400);
-    });
-    scrollBtn.addEventListener("click", () => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
-  }
 }
