@@ -12,9 +12,15 @@ test.describe("BuyHacks UI", () => {
     await expect(page.locator(".product-card").first()).toBeVisible({ timeout: 15_000 });
     const before = await page.locator(".product-card").count();
     await page.fill("#search-input", "zzzznomatch");
-    await expect(page.locator("#result-count")).toContainText("0 product");
+    // Anchored whole-string matches. "0 product" is a *substring* of "10 products",
+    // "20 products", "30 products" — so the old toContainText pair broke at every
+    // count ending in zero and healed itself at 31. The positive half was worse: it
+    // also matched "30 products", so a filter returning everything still read as
+    // "no matches".
+    await expect(page.locator("#result-count")).toHaveText(/^0 products?$/);
+    await expect(page.locator(".product-card")).toHaveCount(0);
     await page.fill("#search-input", "");
-    await expect(page.locator("#result-count")).not.toContainText("0 product", { timeout: 5_000 });
+    await expect(page.locator("#result-count")).toHaveText(/^[1-9]\d* products?$/, { timeout: 5_000 });
     const after = await page.locator(".product-card").count();
     expect(after).toBeGreaterThanOrEqual(before);
   });
@@ -32,7 +38,7 @@ test.describe("BuyHacks UI", () => {
   test("URL query restores search", async ({ page }) => {
     await page.goto("/?q=vacuum");
     await expect(page.locator("#search-input")).toHaveValue("vacuum");
-    await expect(page.locator("#result-count")).not.toContainText("0 product");
+    await expect(page.locator("#result-count")).toHaveText(/^[1-9]\d* products?$/);
   });
 
   test("mobile toolbar shows clear filters and sort", async ({ page }) => {
