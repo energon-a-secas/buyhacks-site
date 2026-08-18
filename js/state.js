@@ -1,3 +1,8 @@
+// Raw localStorage throws in private browsing, where the object exists but
+// every access raises. These wrappers return a fallback instead. Storage
+// keys and formats are unchanged, so existing saved data still loads.
+import { safeGet, safeSet } from './neorgon-persist.js';
+
 // ── Shared mutable state + Convex client ─────────────────────────────
 import { ConvexHttpClient } from "https://esm.sh/convex@1.21.0/browser";
 
@@ -34,10 +39,10 @@ export const api = {
 
 // ── Visitor ID (persistent, used for vote dedup) ─────────────────────
 function getVisitorId() {
-  let id = localStorage.getItem("buyhacks-visitor");
+  let id = safeGet("buyhacks-visitor");
   if (!id) {
     id = crypto.randomUUID();
-    localStorage.setItem("buyhacks-visitor", id);
+    safeSet("buyhacks-visitor", id);
   }
   return id;
 }

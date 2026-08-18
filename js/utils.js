@@ -1,15 +1,14 @@
+// Generic helpers come from the DOM Kit (js/neorgon-dom.js, vendored from
+// packages/neorgon-ui/dom/). They are re-exported so every existing
+// `import { escHtml } from './utils.js'` keeps working.
+//
+// Do not edit js/neorgon-dom.js. Edit the canonical source and run
+// packages/neorgon-ui/sync-dom.sh.
+import { escHtml, debounce } from './neorgon-dom.js';
+export { escHtml, debounce };
+
 // ── Small shared helpers ─────────────────────────────────────────────
 
-/** Escape HTML to prevent XSS. */
-export function escHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 /** Show a toast notification. */
 let toastTimer;
@@ -22,14 +21,6 @@ export function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove("visible"), 2200);
 }
 
-/** Debounce a function. */
-export function debounce(fn, ms) {
-  let id;
-  return (...args) => {
-    clearTimeout(id);
-    id = setTimeout(() => fn(...args), ms);
-  };
-}
 
 /** Allow only http(s) URLs for outbound product links. */
 export function sanitizeExternalUrl(raw) {
