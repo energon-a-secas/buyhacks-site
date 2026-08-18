@@ -2,9 +2,13 @@
 
 /** Escape HTML to prevent XSS. */
 export function escHtml(str) {
-  const el = document.createElement("span");
-  el.textContent = str;
-  return el.innerHTML;
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /** Show a toast notification. */
