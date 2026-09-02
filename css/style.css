@@ -1144,6 +1144,9 @@ button:active, .btn:active {
   transition-duration: .2s;
   transition-timing-function: var(--header-ease-in, ease);
 }
+/* Companion for the NeoKeys chrome toggle's kit-owned state. Dormant until
+   this site opts into the H key; harmless meanwhile. */
+html[data-chrome="off"] .toolbar-sticky { top: 0; }
 
 .toolbar-inner {
   max-width: 1100px;
