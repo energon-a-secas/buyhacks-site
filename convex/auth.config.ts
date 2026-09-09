@@ -1,6 +1,6 @@
 import type { AuthConfig } from "convex/server";
 
-const CLERK_JWT_ISSUER = "https://liked-pup-17.clerk.accounts.dev";
+const CLERK_JWT_ISSUER = "https://clerk.neorgon.com";
 
 export default {
   providers: [
