@@ -8,9 +8,9 @@ Curated product showcase with community votes and life-hack tips.
 
 - 24 curated products across 7 categories
 - Vote love / own / want on any product (anonymous, visitor-ID dedup)
-- Submit life-hack tips (login required, 280 char limit, max 3 per product)
+- Submit life-hack tips (sign-in required, 280 char limit, max 3 per product)
 - Search, category filter chips, sort by most loved/owned/wanted
-- User auth (register/login) with admin roles
+- One Neorgon account for every Neorgon site (Clerk, through the Neorgon Auth Kit), with admin roles checked on the server
 - User-submitted products with image upload
 - Automatic background removal via Cloudflare Worker + remove.bg
 
@@ -83,19 +83,20 @@ buyhacks-site/
   css/style.css           # All styles
   js/
     app.js                # Entry point
-    state.js              # Convex client, auth, worker URL, mutable state
+    state.js              # Convex client, session label, worker URL, mutable state
     data.js               # 24 products, categories, verdict labels
     render.js             # DOM rendering (grid, chips, cards)
-    events.js             # Event handlers (votes, hacks, auth, upload)
+    events.js             # Event handlers (votes, hacks, sign-in gates, upload)
     utils.js              # escHtml, toast, debounce, timeAgo
+    neorgon-auth.js       # Neorgon Auth Kit, vendored from packages/neorgon-ui/auth (do not edit)
   convex/
     schema.ts             # users, votes, hacks, products tables
-    auth.ts               # register / login mutations
+    auth.ts               # isAdmin (Clerk subject in ADMIN_SUBJECTS)
     votes.ts              # getVotes query, toggleVote mutation
     hacks.ts              # getHacks query, submitHack / deleteHack mutations
     products.ts           # list query, save / delete / getUploadUrl mutations
   worker/
-    src/index.js          # Cloudflare Worker — remove.bg proxy
+    src/index.js          # Cloudflare Worker, remove.bg proxy
     wrangler.toml         # Worker config (allowed origins, secrets)
     package.json          # wrangler devDependency
 ```

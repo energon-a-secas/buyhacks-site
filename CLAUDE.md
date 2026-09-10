@@ -43,10 +43,11 @@ Because there is no build step, the frontend calls Convex via `ConvexHttpClient`
 
 ```js
 export const api = {
-  auth:     { register: "auth:register", login: "auth:login", getRole: "auth:getRole", setRole: "auth:setRole" },
+  auth:     { isAdmin: "auth:isAdmin" },
   votes:    { getVotes: "votes:getVotes", toggleVote: "votes:toggleVote" },
   hacks:    { getHacks: "hacks:getHacks", submitHack: "hacks:submitHack", deleteHack: "hacks:deleteHack" },
   products: { list: "products:list", getUploadUrl: "products:getUploadUrl", saveProduct: "products:saveProduct", deleteProduct: "products:deleteProduct" },
+  freshness: { getFeed: "freshness:getFeed" },
 };
 ```
 
@@ -56,9 +57,9 @@ If you add or rename a Convex function, update both the `convex/` file and this 
 
 Votes are anonymous. `visitorId` is a UUID generated once and persisted in `localStorage` under `"buyhacks-visitor"`. A visitor can cast all three vote types (love/own/want) on the same product simultaneously, `toggleVote` adds or removes a single vote row per (visitorId, productSlug, voteType). Vote counts are loaded from Convex into `state.voteCounts` and applied optimistically on click before the round-trip.
 
-### Auth: simple hash, role system
+### Auth: Neorgon Auth Kit (Clerk)
 
-Auth uses a weak non-cryptographic hash (`simpleHash` in `convex/auth.ts`), intentional for a personal fun site. The first user to register automatically becomes `admin`. Auth state is stored in `localStorage` (`"buyhacks-user"`, `"buyhacks-role"`). Admin role unlocks delete buttons for hacks and user-submitted products in the rendered card HTML.
+Clerk, through the Neorgon Auth Kit: `js/neorgon-auth.js`, `js/neorgon-auth-sites.js` and `css/neorgon-auth.css` are vendored from `packages/neorgon-ui/auth/` by `sync-auth.sh`, so never edit them here. One Neorgon account works on every Neorgon site. The kit owns the header slot (`data-neo-auth`), the sign-in dialog and the Convex token. `events.js` only listens with `NeoAuth.onChange` (inside `initBuyhacksAuth`, which `app.js` awaits before `bindEvents`) and asks for a sign-in with `NeoAuth.requireSignIn` wherever an action needs one: the Add Product prompt's "Sign in" button, submitting a product, posting a tip, and the admin deletes. Admin is decided server-side: `auth:isAdmin` checks the Clerk subject against the `ADMIN_SUBJECTS` Convex env var (which `hacks:deleteHack` and `products:deleteProduct` also enforce), and `refreshAdminFlag` repaints the browse UI when the answer changes, so admins see delete buttons on tips and user-submitted products without waiting for an unrelated render. `convex/migration.ts` (legacy password linking) is still deployed but has had no UI since 2026-09-10; the password-era `register`, `login`, `setRole` and `getRole` in `convex/auth.ts` are still deployed too, and nothing in the frontend calls them. Sign-in cannot be exercised on localhost: the production key refuses it, and the dialog says so.
 
 ### Image upload flow
 
@@ -74,16 +75,16 @@ All mutable UI state lives in `js/state.js:state` (activeCategory, searchQuery, 
 
 ### Hacks (community tips)
 
-Tips require login. Each user is limited to 3 tips per product (enforced in `convex/hacks.ts`). Max 280 chars. Admins can delete any tip. The hack panel per card is toggled via `state.expandedHacks` (a `Set` of slugs) and re-rendered on toggle.
+Tips require a sign-in: posting one while signed out opens the kit's sign-in dialog, and the tip posts once it succeeds. Each user is limited to 3 tips per product (enforced in `convex/hacks.ts`). Max 280 chars. Admins can delete any tip. The hack panel per card is toggled via `state.expandedHacks` (a `Set` of slugs) and re-rendered on toggle.
 
 ## Key files
 
 - `js/state.js`: Convex client, Worker URL, `api` string map, `visitorId`, auth helpers, mutable `state`
 - `js/data.js`: Static product array, categories, verdict labels, `getRelatedProducts()`
 - `js/render.js`: `getAllProducts()`, `getFilteredProducts()`, `makeProductCard()`, `renderGrid()`, `renderChips()`
-- `js/events.js`: `loadRemoteData()`, all handlers, `bindEvents()`
+- `js/events.js`: `initBuyhacksAuth()` (the Auth Kit listener), `loadRemoteData()`, all handlers, `bindEvents()`
 - `convex/schema.ts`: Database schema (users, votes, hacks, products tables)
-- `convex/auth.ts`: register/login/setRole/getRole; first registrant becomes admin
+- `convex/auth.ts`: `isAdmin` (Clerk subject in `ADMIN_SUBJECTS`); the password-era register/login/setRole/getRole remain deployed with no frontend caller
 - `convex/votes.ts`: `getVotes` (all counts + visitor's), `toggleVote`
 - `convex/hacks.ts`: `getHacks`, `submitHack` (3-per-visitor cap), `deleteHack` (admin only)
 - `convex/products.ts`: `list` (with image URL resolution), `getUploadUrl`, `saveProduct`, `deleteProduct`

@@ -17,24 +17,11 @@ export const REMOVEBG_WORKER_URL = "https://buyhacks-removebg.neorgon.workers.de
 
 // Function references (strings at runtime — no build step needed)
 export const api = {
-  auth: {
-    register: "auth:register",
-    login: "auth:login",
-    getRole: "auth:getRole",
-    setRole: "auth:setRole",
-    isAdmin: "auth:isAdmin",
-  },
+  auth:     { isAdmin: "auth:isAdmin" },
   votes:    { getVotes: "votes:getVotes", toggleVote: "votes:toggleVote" },
   hacks:    { getHacks: "hacks:getHacks", submitHack: "hacks:submitHack", deleteHack: "hacks:deleteHack" },
   products: { list: "products:list", getUploadUrl: "products:getUploadUrl", saveProduct: "products:saveProduct", deleteProduct: "products:deleteProduct" },
   freshness: { getFeed: "freshness:getFeed" },
-  migration: {
-    myAccountLink: "migration:myAccountLink",
-    linkLegacyAccount: "migration:linkLegacyAccount",
-    getUserSetting: "migration:getUserSetting",
-    setUserSetting: "migration:setUserSetting",
-    listUserSettings: "migration:listUserSettings",
-  },
 };
 
 // ── Visitor ID (persistent, used for vote dedup) ─────────────────────
@@ -48,25 +35,16 @@ function getVisitorId() {
 }
 export const visitorId = getVisitorId();
 
-// ── Clerk session (set by events.js via initBuyhacksAuth) ─────────────
-export function isSignedIn() {
-  return !!state.authLabel;
-}
-
+// ── Session (set by events.js from NeoAuth.onChange) ──────────────────
 export function setAuthSession(label, isAdmin) {
   state.authLabel = label || null;
   state.isConvexAdmin = !!isAdmin;
 }
 
-/** @deprecated legacy localStorage; unused with Clerk — kept so imports do not break during transition */
+/** Display label of the signed-in account, or null when signed out. */
 export function getLoggedInUser() {
   return state.authLabel;
 }
-export function setLoggedInUser() {}
-export function getUserRole() {
-  return state.isConvexAdmin ? "admin" : "user";
-}
-export function setUserRole() {}
 
 // ── Mutable application state ────────────────────────────────────────
 export const state = {

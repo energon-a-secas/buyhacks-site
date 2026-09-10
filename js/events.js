@@ -5,188 +5,41 @@ import { normalizeCategoryId } from "./data.js";
 import { renderChips, renderGrid, renderFreshnessSection, renderViewToggle, renderProductDetailModal } from "./render.js";
 import { toast, debounce, sanitizeExternalUrl } from "./utils.js";
 import { writeStateToUrl } from "./url-sync.js";
+import { NeoAuth } from "./neorgon-auth.js";
 
 const pushUrl = debounce(() => writeStateToUrl(), 400);
 
-let buyhacksClerk = null;
+// ── Auth ─────────────────────────────────────────────────────────────
+// The Neorgon Auth Kit owns the header slot, the sign-in dialog and the Convex
+// token. This file only listens, and asks for a sign-in where an action needs one.
+const ADD_PRODUCT_REASON = "Sign in to add products.";
 
+// Admin delete buttons render only for admins, and the grid is drawn before this
+// answers, so a change has to repaint or the buttons wait for an unrelated render.
 async function refreshAdminFlag() {
-  if (!getLoggedInUser()) {
-    setAuthSession(null, false);
-    return;
-  }
+  let isAdmin = false;
   try {
-    const isAd = await convex.query(api.auth.isAdmin, {});
-    setAuthSession(state.authLabel, !!isAd);
+    isAdmin = !!(await convex.query(api.auth.isAdmin, {}));
   } catch {
-    setAuthSession(state.authLabel, false);
+    // A failed check leaves the admin controls hidden.
   }
+  if (!getLoggedInUser() || isAdmin === state.isConvexAdmin) return;
+  setAuthSession(state.authLabel, isAdmin);
+  refreshBrowseUi();
 }
 
-async function refreshLegacyLinkSection() {
-  const section = document.getElementById("legacyLinkSection");
-  const msg = document.getElementById("legacyLinkMessage");
-  if (!section) return;
-  if (!getLoggedInUser()) {
-    section.hidden = true;
-    return;
-  }
-  try {
-    const link = await convex.query(api.migration.myAccountLink, {});
-    section.hidden = !!link;
-    if (msg) {
-      msg.hidden = true;
-      msg.textContent = "";
-      msg.classList.remove("legacy-link-message--err");
-    }
-  } catch {
-    section.hidden = true;
-  }
-}
-
-async function onLegacyLinkClick() {
-  const userEl = document.getElementById("legacyLinkUser");
-  const passEl = document.getElementById("legacyLinkPassword");
-  const msg = document.getElementById("legacyLinkMessage");
-  const section = document.getElementById("legacyLinkSection");
-  const username = userEl?.value?.trim() || "";
-  const password = passEl?.value || "";
-  if (!username || !password) {
-    if (msg) {
-      msg.textContent = "Enter legacy username and password.";
-      msg.classList.add("legacy-link-message--err");
-      msg.hidden = false;
-    }
-    return;
-  }
-  try {
-    const res = await convex.mutation(api.migration.linkLegacyAccount, { username, password });
-    if (res.ok) {
-      if (msg) {
-        msg.textContent = `Linked @${res.legacyUsername}.`;
-        msg.classList.remove("legacy-link-message--err");
-        msg.hidden = false;
-      }
-      if (userEl) userEl.value = "";
-      if (passEl) passEl.value = "";
-      if (section) section.hidden = true;
-      toast("Legacy account linked");
-    } else if (msg) {
-      msg.textContent = res.error || "Link failed";
-      msg.classList.add("legacy-link-message--err");
-      msg.hidden = false;
-    }
-  } catch {
-    if (msg) {
-      msg.textContent = "Link failed. Try again.";
-      msg.classList.add("legacy-link-message--err");
-      msg.hidden = false;
-    }
-  }
-}
-
-/** Clerk dark theme + accent (SignIn, UserButton, OAuth, loading states). */
-const BUYHACKS_CLERK_APPEARANCE = {
-  baseTheme: "dark",
-  variables: {
-    colorPrimary: "#f59e0b",
-    colorPrimaryForeground: "#0c0a06",
-    colorForeground: "#f9f9f9",
-    colorDanger: "#f87171",
-    colorSuccess: "#22c55e",
-    colorWarning: "#fbbf24",
-    colorBackground: "#121828",
-    colorInputBackground: "rgba(255, 255, 255, 0.08)",
-    colorInputForeground: "#f9f9f9",
-    colorText: "#f9f9f9",
-    colorTextSecondary: "rgba(202, 202, 202, 0.92)",
-    colorShimmer: "rgba(251, 191, 36, 0.35)",
-    colorNeutral: "rgba(255, 255, 255, 0.08)",
-    borderRadius: "10px",
-    fontFamily: "'Avenir Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  },
-  elements: {
-    formButtonPrimary: {
-      backgroundColor: "#f59e0b",
-      color: "#0c0a06",
-      fontWeight: "600",
-      boxShadow: "0 1px 0 rgba(255, 255, 255, 0.12) inset",
-    },
-    formButtonReset: {
-      color: "rgba(202, 202, 202, 0.95)",
-    },
-    socialButtonsBlockButton: {
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      border: "1px solid rgba(255, 255, 255, 0.14)",
-      color: "#f9f9f9",
-    },
-    socialButtonsBlockButtonText: {
-      color: "#f9f9f9",
-    },
-    alternativeMethodsBlockButton: {
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      border: "1px solid rgba(255, 255, 255, 0.14)",
-      color: "#f9f9f9",
-    },
-    card: {
-      backgroundColor: "transparent",
-      boxShadow: "none",
-      width: "100%",
-    },
-    rootBox: {
-      width: "100%",
-      maxWidth: "400px",
-      marginLeft: "auto",
-      marginRight: "auto",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-    },
-  },
-};
-
-/** Clerk + Convex JWT (Neorgon shared client). Call from app.js before bindEvents. */
+/**
+ * Called once from app.js, before bindEvents. The kit calls the listener with the
+ * settled state, then only on real changes (never on token refresh ticks).
+ */
 export async function initBuyhacksAuth() {
-  const pk = document.querySelector('meta[name="clerk-publishable-key"]')?.content?.trim();
-  if (!pk) {
-    console.warn("BuyHacks: add clerk-publishable-key meta for sign-in.");
-    return;
-  }
-  try {
-    const { initNeorgonClerkConvex, neorgonDisplayLabel } = await import("./vendor/neorgon-auth.js");
-    buyhacksClerk = await initNeorgonClerkConvex({
-      convex,
-      publishableKey: pk,
-      signInHost: "#neorgon-signin-mount",
-      userButtonHost: "#neorgon-user-mount",
-      clerkAppearance: BUYHACKS_CLERK_APPEARANCE,
-      userButtonProps: {
-        showName: true,
-      },
-      signInProps: {
-        appearance: {
-          ...BUYHACKS_CLERK_APPEARANCE,
-          layout: { unsafe_disableDevelopmentModeWarnings: true },
-        },
-      },
-      onSession: ({ clerk, hasSession }) => {
-        buyhacksClerk = clerk;
-        if (hasSession) {
-          setAuthSession(neorgonDisplayLabel(clerk), false);
-          void refreshAdminFlag();
-          void refreshLegacyLinkSection();
-        } else {
-          setAuthSession(null, false);
-        }
-        renderAuthState();
-        updateUploadZoneVisibility();
-        refreshBrowseUi();
-        if (hasSession) closeAuthModal();
-      },
-    });
-  } catch (e) {
-    console.warn("BuyHacks: Clerk init failed", e);
-  }
+  NeoAuth.onChange(({ signedIn, label }) => {
+    setAuthSession(signedIn ? label : null, false);
+    updateUploadZoneVisibility();
+    refreshBrowseUi();
+    if (signedIn) void refreshAdminFlag();
+  });
+  await NeoAuth.start({ convex });
 }
 
 function refreshBrowseUi() {
@@ -277,10 +130,9 @@ async function handleVote(slug, voteType, _btn) {
 }
 
 /** Admin: delete a hack tip. */
-async function handleDeleteHack(hackId) {
+async function handleDeleteHack(hackId, invoker) {
   if (!confirm("Delete this tip?")) return;
-  const username = getLoggedInUser();
-  if (!username) { toast("Login required"); return; }
+  if (!getLoggedInUser() && !(await NeoAuth.requireSignIn({ reason: "Sign in to delete this tip.", invoker }))) return;
   try {
     const result = await convex.mutation(api.hacks.deleteHack, { hackId });
     if (result.ok) {
@@ -295,10 +147,9 @@ async function handleDeleteHack(hackId) {
 }
 
 /** Admin: delete a user-submitted product. */
-async function handleDeleteProduct(productId) {
+async function handleDeleteProduct(productId, invoker) {
   if (!confirm("Delete this product?")) return;
-  const username = getLoggedInUser();
-  if (!username) { toast("Login required"); return; }
+  if (!getLoggedInUser() && !(await NeoAuth.requireSignIn({ reason: "Sign in to delete this product.", invoker }))) return;
   try {
     const result = await convex.mutation(api.products.deleteProduct, { productId });
     if (result.ok) {
@@ -353,7 +204,7 @@ function setupUploadPanel() {
       const description = document.getElementById("productDescription")?.value.trim();
       const tagsRaw = document.getElementById("productTags")?.value.trim();
       const verdict = document.getElementById("productVerdict")?.value;
-      if (!getLoggedInUser()) { toast("Sign in to add products"); return; }
+      if (!getLoggedInUser() && !(await NeoAuth.requireSignIn({ reason: ADD_PRODUCT_REASON, invoker: uploadSubmit }))) return;
       if (!name) { toast("Product name is required"); return; }
       if (!brand) { toast("Brand is required"); return; }
       if (!description) { toast("Description is required"); return; }
@@ -440,14 +291,10 @@ function updateUploadZoneVisibility() {
   if (uploadZone) uploadZone.style.display = user ? "" : "none";
 }
 
-/** Handle hack form submissions. */
+/** Handle hack form submissions. Resolves true only when the tip was posted. */
 async function handleHackSubmit(slug, text, submitBtn) {
-  const user = getLoggedInUser();
-  if (!user) {
-    toast("Sign in to share tips");
-    return;
-  }
-  if (!text.trim()) return;
+  if (!getLoggedInUser() && !(await NeoAuth.requireSignIn({ reason: "Sign in to share tips.", invoker: submitBtn }))) return false;
+  if (!text.trim()) return false;
 
   let restoreLabel;
   if (submitBtn) {
@@ -465,6 +312,7 @@ async function handleHackSubmit(slug, text, submitBtn) {
     if (result.ok) {
       toast("Tip shared!");
       await loadRemoteData();
+      return true;
     } else {
       toast(result.error);
     }
@@ -476,62 +324,6 @@ async function handleHackSubmit(slug, text, submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = restoreLabel || "Post";
     }
-  }
-}
-
-/** Match modal title to Clerk hash routing (sign-in vs sign-up). */
-function syncAuthModalTitleFromClerkRoute() {
-  const modal = document.getElementById("authModal");
-  const title = document.getElementById("authModalTitle");
-  if (!modal?.classList.contains("open") || !title) return;
-  if (getLoggedInUser()) {
-    title.textContent = "Account";
-    return;
-  }
-  const h = (window.location.hash || "").toLowerCase();
-  if (h.includes("sign-up") || h.includes("signup") || h.includes("sign_up")) title.textContent = "Create account";
-  else title.textContent = "Sign in";
-}
-
-function openAuthModal() {
-  const modal = document.getElementById("authModal");
-  if (!modal) return;
-  modal.classList.add("open");
-  modal.setAttribute("aria-hidden", "false");
-  document.body.classList.add("auth-modal-open");
-  syncAuthModalTitleFromClerkRoute();
-  requestAnimationFrame(() => {
-    syncAuthModalTitleFromClerkRoute();
-    requestAnimationFrame(() => syncAuthModalTitleFromClerkRoute());
-  });
-  if (getLoggedInUser()) void refreshLegacyLinkSection();
-}
-
-function closeAuthModal() {
-  const modal = document.getElementById("authModal");
-  if (!modal) return;
-  modal.classList.remove("open");
-  modal.setAttribute("aria-hidden", "true");
-  document.body.classList.remove("auth-modal-open");
-}
-
-/** Update auth UI state (Clerk session). */
-function renderAuthState() {
-  const loggedIn = !!getLoggedInUser();
-  const authGate = document.getElementById("authGate");
-  const authUser = document.getElementById("authUser");
-  const authToggle = document.getElementById("authToggle");
-  const authUsername = document.getElementById("authUsername");
-  const authModalTitle = document.getElementById("authModalTitle");
-  if (!authGate || !authUser) return;
-  authGate.hidden = loggedIn;
-  authUser.hidden = !loggedIn;
-  if (authToggle) authToggle.classList.toggle("logged-in", loggedIn);
-  if (loggedIn && authUsername) authUsername.textContent = state.authLabel || "";
-  if (authModalTitle) {
-    if (loggedIn) authModalTitle.textContent = "Account";
-    else if (document.getElementById("authModal")?.classList.contains("open")) syncAuthModalTitleFromClerkRoute();
-    else authModalTitle.textContent = "Sign in";
   }
 }
 
@@ -626,13 +418,13 @@ export function bindEvents() {
 
     const hackDel = e.target.closest(".hack-delete");
     if (hackDel) {
-      handleDeleteHack(hackDel.dataset.hackId);
+      handleDeleteHack(hackDel.dataset.hackId, hackDel);
       return;
     }
 
     const prodDel = e.target.closest(".product-delete");
     if (prodDel) {
-      handleDeleteProduct(prodDel.dataset.productId);
+      handleDeleteProduct(prodDel.dataset.productId, prodDel);
       return;
     }
   });
@@ -645,8 +437,11 @@ export function bindEvents() {
     const input = e.target.querySelector(".hack-input");
     const submitBtn = e.target.querySelector(".hack-submit");
     if (input && input.value.trim()) {
-      handleHackSubmit(slug, input.value, submitBtn);
-      input.value = "";
+      // Cleared only once the tip is posted: dismissing the sign-in dialog, or a
+      // failed post, leaves what the visitor typed where they typed it.
+      void handleHackSubmit(slug, input.value, submitBtn).then((posted) => {
+        if (posted) input.value = "";
+      });
     }
   });
 
@@ -656,30 +451,24 @@ export function bindEvents() {
     if (panel) panel.classList.toggle("open");
   });
 
-  // Auth modal
-  document.getElementById("authToggle")?.addEventListener("click", () => {
-    const modal = document.getElementById("authModal");
-    if (modal?.classList.contains("open")) closeAuthModal();
-    else openAuthModal();
+  // Sign in from the Add Product panel
+  document.getElementById("uploadSigninBtn")?.addEventListener("click", (e) => {
+    void NeoAuth.requireSignIn({ reason: ADD_PRODUCT_REASON, invoker: e.currentTarget });
   });
-  document.getElementById("authModalBackdrop")?.addEventListener("click", () => closeAuthModal());
-  document.getElementById("authModalClose")?.addEventListener("click", () => closeAuthModal());
-  window.addEventListener("hashchange", () => syncAuthModalTitleFromClerkRoute());
+
+  // Escape closes the product detail modal
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    // The kit's sign-in dialog is a native <dialog> that takes its own Escape;
+    // closing the detail modal behind it too would drop the tip being posted.
+    if (document.querySelector("dialog[open]")) return;
     const detail = document.getElementById("product-detail-modal");
     if (detail?.classList.contains("open")) {
       state.detailSlug = null;
       renderProductDetailModal();
-      return;
     }
-    const modal = document.getElementById("authModal");
-    if (modal?.classList.contains("open")) closeAuthModal();
   });
 
-  document.getElementById("legacyLinkBtn")?.addEventListener("click", () => {
-    void onLegacyLinkClick();
-  });
   setupUploadPanel();
   updateUploadZoneVisibility();
 }
