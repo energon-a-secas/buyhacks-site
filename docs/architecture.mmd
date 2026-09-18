@@ -21,16 +21,21 @@ config:
 flowchart TB
     subgraph Browser["Browser (Static Site)"]
         UI["index.html + ES Modules"]
-        State["state.js - Convex client, auth, app state"]
-        Events["events.js - upload, votes, hacks, auth"]
+        State["state.js - Convex client, app state"]
+        Events["events.js - upload, votes, hacks"]
         Render["render.js - product grid, cards, chips"]
+        AuthKit["neorgon-auth.js - Auth Kit (vendored)"]
+    end
+
+    subgraph Clerk["Clerk"]
+        ClerkInstance["clerk.neorgon.com - one account, every Neorgon site"]
     end
 
     subgraph Convex["Convex Backend"]
-        Auth["auth.ts - register / login"]
+        Auth["auth.ts - isAdmin (Clerk subject vs ADMIN_SUBJECTS)"]
         Votes["votes.ts - getVotes / toggleVote"]
-        Hacks["hacks.ts - getHacks / submitHack / deleteHack"]
-        Products["products.ts - list / save / delete"]
+        Hacks["hacks.ts - getHacks / submitHack / deleteHack (admin)"]
+        Products["products.ts - list / save / delete (admin)"]
         Storage["Convex File Storage"]
     end
 
@@ -42,8 +47,12 @@ flowchart TB
     UI -->|"ES module imports"| State
     UI --> Events
     UI --> Render
+    UI --> AuthKit
 
-    Events -->|"mutations / queries"| Auth
+    AuthKit -->|"sign-in dialog, session"| ClerkInstance
+    AuthKit -->|"Convex token"| State
+    Events -->|"requireSignIn / onChange"| AuthKit
+    Events -->|"isAdmin"| Auth
     Events -->|"mutations / queries"| Votes
     Events -->|"mutations / queries"| Hacks
     Events -->|"mutations / queries"| Products

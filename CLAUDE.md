@@ -59,7 +59,17 @@ Votes are anonymous. `visitorId` is a UUID generated once and persisted in `loca
 
 ### Auth: Neorgon Auth Kit (Clerk)
 
-Clerk, through the Neorgon Auth Kit: `js/neorgon-auth.js`, `js/neorgon-auth-sites.js` and `css/neorgon-auth.css` are vendored from `packages/neorgon-ui/auth/` by `sync-auth.sh`, so never edit them here. One Neorgon account works on every Neorgon site. The kit owns the header slot (`data-neo-auth`), the sign-in dialog and the Convex token. `events.js` only listens with `NeoAuth.onChange` (inside `initBuyhacksAuth`, which `app.js` awaits before `bindEvents`) and asks for a sign-in with `NeoAuth.requireSignIn` wherever an action needs one: the Add Product prompt's "Sign in" button, submitting a product, posting a tip, and the admin deletes. Admin is decided server-side: `auth:isAdmin` checks the Clerk subject against the `ADMIN_SUBJECTS` Convex env var (which `hacks:deleteHack` and `products:deleteProduct` also enforce), and `refreshAdminFlag` repaints the browse UI when the answer changes, so admins see delete buttons on tips and user-submitted products without waiting for an unrelated render. `convex/migration.ts` (legacy password linking) is still deployed but has had no UI since 2026-09-10; the password-era `register`, `login`, `setRole` and `getRole` in `convex/auth.ts` are still deployed too, and nothing in the frontend calls them. Sign-in cannot be exercised on localhost: the production key refuses it, and the dialog says so.
+Clerk, through the Neorgon Auth Kit: `js/neorgon-auth.js`, `js/neorgon-auth-sites.js` and `css/neorgon-auth.css` are vendored from `packages/neorgon-ui/auth/` by `sync-auth.sh`, so never edit them here. One Neorgon account works on every Neorgon site. The kit owns the header slot (`data-neo-auth`), the sign-in dialog and the Convex token. `events.js` only listens with `NeoAuth.onChange` (inside `initBuyhacksAuth`, which `app.js` awaits before `bindEvents`) and asks for a sign-in with `NeoAuth.requireSignIn` wherever an action needs one: the Add Product prompt's "Sign in" button, submitting a product, posting a tip, and the admin deletes. Admin is decided server-side: `auth:isAdmin` checks the Clerk subject against the `ADMIN_SUBJECTS` Convex env var (which `hacks:deleteHack` and `products:deleteProduct` also enforce), and `refreshAdminFlag` repaints the browse UI when the answer changes, so admins see delete buttons on tips and user-submitted products without waiting for an unrelated render. `convex/migration.ts` (legacy password linking) is still deployed but has had no UI since 2026-09-10. The password-era `register`, `login`, `setRole` and `getRole` were **deleted from `convex/auth.ts` on 2026-09-18** (queue `#63`c): they had lost their last caller when the Auth Kit landed, and `register` inserted a `users` row for any unauthenticated caller while `login` confirmed a legacy password with no rate limit, which is an oracle for the credentials `linkLegacyAccount` accepts. **They still answer in production until the next `npx convex deploy`**, since deleting the source does not withdraw a deployed function. Linking is unaffected: `linkLegacyAccount` verifies legacy passwords itself, and the `users` table with its `by_username` index stays for it. Sign-in cannot be exercised on localhost: the production key refuses it, and the dialog says so.
+
+### CSP: the inline theme guard is pinned by hash
+
+`script-src` in `index.html` has no `'unsafe-inline'`, so the Header Kit's one-line
+theme guard, which must run before first paint, is allowed by its `sha256` instead.
+That snippet is byte-identical on 81 pages in the fleet and is quoted verbatim in
+`packages/neorgon-ui/header/README.md`, so the hash is a constant rather than a
+per-site value. Edit the snippet and the hash stops matching, which brings back both
+symptoms it was pinned to remove: a theme flash and a console error. Smoke check 29
+recomputes it. Any new inline script on this page needs its own hash, or a file.
 
 ### Image upload flow
 
@@ -84,7 +94,7 @@ Tips require a sign-in: posting one while signed out opens the kit's sign-in dia
 - `js/render.js`: `getAllProducts()`, `getFilteredProducts()`, `makeProductCard()`, `renderGrid()`, `renderChips()`
 - `js/events.js`: `initBuyhacksAuth()` (the Auth Kit listener), `loadRemoteData()`, all handlers, `bindEvents()`
 - `convex/schema.ts`: Database schema (users, votes, hacks, products tables)
-- `convex/auth.ts`: `isAdmin` (Clerk subject in `ADMIN_SUBJECTS`); the password-era register/login/setRole/getRole remain deployed with no frontend caller
+- `convex/auth.ts`: `isAdmin` (Clerk subject in `ADMIN_SUBJECTS`), and nothing else since 2026-09-18
 - `convex/votes.ts`: `getVotes` (all counts + visitor's), `toggleVote`
 - `convex/hacks.ts`: `getHacks`, `submitHack` (3-per-visitor cap), `deleteHack` (admin only)
 - `convex/products.ts`: `list` (with image URL resolution), `getUploadUrl`, `saveProduct`, `deleteProduct`

@@ -1,4 +1,5 @@
 import { query, mutation } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
 function displayFromIdentity(identity: { name?: string; email?: string; subject: string }) {
@@ -16,7 +17,10 @@ export const getHacks = query({
   handler: async (ctx) => {
     const allHacks = await ctx.db.query("hacks").collect();
 
-    const byProduct: Record<string, Array<{ text: string; submittedBy: string; createdAt: number }>> = {};
+    // `_id` belongs in this shape: render.js:165 needs it to draw the admin
+    // delete button. It was pushed but not declared, which was the project's one
+    // type error.
+    const byProduct: Record<string, Array<{ _id: Id<"hacks">; text: string; submittedBy: string; createdAt: number }>> = {};
     for (const hack of allHacks) {
       if (!byProduct[hack.productSlug]) byProduct[hack.productSlug] = [];
       byProduct[hack.productSlug].push({
