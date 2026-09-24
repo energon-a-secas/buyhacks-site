@@ -4,7 +4,7 @@
 
 - Live: https://buyhacks.neorgon.com/
 - Part of the Neorgon tool suite (free, no signup, runs in your browser): https://neorgon.com/
-- Keywords: products, votes, tips, convex, auth
+- Keywords: products, votes, tips, convex, auth, clerk
 
 ## More Neorgon tools
 
