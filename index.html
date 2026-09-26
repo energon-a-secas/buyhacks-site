@@ -78,8 +78,10 @@
     </div>
 
     <div class="header-right">
-      <nav class="header-actions">
-        <button data-keep-mobile type="button" class="nav-link nav-link--highlight" id="addProductToggle">Add Product</button>
+      <nav class="header-actions" aria-label="Product actions">
+        <button data-keep-mobile type="button" class="nav-link nav-link--highlight" id="addProductToggle" aria-expanded="false" aria-controls="uploadPanel">Add Product</button>
+        <button type="button" class="nav-link" id="shareView">Share view</button>
+        <button type="button" class="nav-link" id="refreshProducts">Refresh</button>
     
       </nav>
       <div class="neo-auth" data-neo-auth data-keep-mobile hidden></div>
@@ -97,7 +99,7 @@
     </div>
   </header>
 
-  <main id="main">
+  <main id="main" tabindex="-1">
     <div class="container">
 
       <!-- Add Product panel (collapsible) -->
@@ -156,7 +158,7 @@
             <div class="search-wrap toolbar-search-grow">
               <label class="sr-only" for="search-input">Search products</label>
               <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              <input type="search" id="search-input" placeholder="Search products, brands, tags…" autocomplete="off" enterkeyhint="search" inputmode="search">
+              <input type="search" id="search-input" placeholder="Search products, brands, tags…" autocomplete="off" enterkeyhint="search" inputmode="search" maxlength="300">
             </div>
             <div class="toolbar-actions" role="toolbar" aria-label="Sort and layout">
               <div class="sort-wrap toolbar-sort-inline">
@@ -186,6 +188,10 @@
 
       <div class="result-meta"><span id="result-count"></span></div>
       <div id="results-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div class="catalog-status" id="catalogStatus" hidden>
+        <p id="catalogMessage" role="status" aria-live="polite"></p>
+        <button type="button" class="btn-clear-filters" id="retryProducts">Try again</button>
+      </div>
 
       <!-- Product grid -->
       <div id="product-grid" class="product-grid"></div>
@@ -197,8 +203,7 @@
   </footer>
 
   <!-- Product detail (full tips, notes, tags, community hacks) -->
-  <div id="product-detail-modal" class="product-detail-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
-    <div class="product-detail-backdrop" id="product-detail-backdrop" tabindex="-1"></div>
+  <dialog id="product-detail-modal" class="product-detail-modal" aria-labelledby="product-detail-title">
     <div class="product-detail-dialog">
       <div class="product-detail-header">
         <h2 class="product-detail-title" id="product-detail-title">Product</h2>
@@ -206,10 +211,10 @@
       </div>
       <div class="product-detail-body" id="product-detail-body"></div>
     </div>
-  </div>
+  </dialog>
 
   <!-- Toast -->
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module" src="js/app.js"></script>
 </body>

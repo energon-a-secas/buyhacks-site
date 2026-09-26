@@ -1,11 +1,13 @@
 // ── Entry point ──────────────────────────────────────────────
-import { readUrlIntoState } from "./url-sync.js";
-import { renderGridSkeleton } from "./render.js";
+import { state } from './state.js';
+import { readUrlIntoState, navigation } from "./url-sync.js";
+import { renderChips } from "./render.js";
 import { bindEvents, loadRemoteData, syncControlsFromState, initBuyhacksAuth } from "./events.js";
 
-readUrlIntoState();
-renderGridSkeleton();
-await initBuyhacksAuth();
+readUrlIntoState(state);
+navigation.replace();
+renderChips();
 syncControlsFromState();
 bindEvents();
-await loadRemoteData();
+void loadRemoteData();
+void initBuyhacksAuth().catch(() => {});

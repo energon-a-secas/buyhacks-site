@@ -4,12 +4,7 @@
 import { safeGet, safeSet } from './neorgon-persist.js';
 
 // ── Shared mutable state + Convex client ─────────────────────────────
-import { ConvexHttpClient } from "https://esm.sh/convex@1.21.0/browser";
-
-// ── Convex client ────────────────────────────────────────────────────
-// Must match `CONVEX_URL` in `.env.local` (run `npx convex dev` to confirm).
-const CONVEX_URL = "https://formal-lemur-640.convex.cloud";
-export const convex = new ConvexHttpClient(CONVEX_URL);
+export { convex } from './client.js';
 
 // ── remove.bg Worker URL ─────────────────────────────────────────────
 // Cloudflare Worker that proxies remove.bg for background removal
@@ -61,8 +56,12 @@ export const state = {
   voteCounts: {},
   myVotes: {},
   hacks: {},
-  /** False until the first Convex catalog load attempt resolves (drives skeleton vs empty state). */
+  pendingTips: new Set(),
+  /** True only after a successful catalog response, including an empty one. */
   productsLoaded: false,
+  catalogLoading: false,
+  catalogError: '',
+  enrichmentErrors: [],
   /** Mapped Convex `products:list` rows (curated catalog + community). */
   products: [],
   freshnessFeed: { recentTips: [], newestProducts: [] },

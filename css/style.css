@@ -233,6 +233,19 @@ select.upload-input {
 
 /* ── Toolbar category (select) + primary row ─────────────── */
 
+.catalog-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+}
+.catalog-status[hidden] { display: none; }
+.catalog-status p { margin: 0; flex: 1 1 16rem; color: var(--text-secondary); }
+
 .result-meta {
   font-size: var(--text-sm);
   color: var(--text-muted);
@@ -1289,27 +1302,26 @@ body.product-detail-open {
   position: fixed;
   inset: 0;
   z-index: 9000;
-  display: flex;
+  display: none;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
   align-items: flex-end;
   justify-content: center;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.22s ease, visibility 0.22s;
 }
 
-.product-detail-modal.open {
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
+.product-detail-modal[open] {
+  display: flex;
 }
 
-.product-detail-backdrop {
-  position: absolute;
-  inset: 0;
+.product-detail-modal::backdrop {
   background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 
 .product-detail-dialog {

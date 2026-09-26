@@ -1,26 +1,25 @@
-import { state } from "./state.js";
 import { normalizeCategoryId } from "./data.js";
+import { state } from './state.js';
+import { updateQuery, createQueryHistory } from './neorgon-navigation.js';
 
-export function readUrlIntoState() {
-  const p = new URLSearchParams(window.location.search);
-  if (p.has("q")) state.searchQuery = (p.get("q") || "").trim();
-  if (p.has("cat")) state.activeCategory = normalizeCategoryId(p.get("cat"));
-  if (p.has("sort")) {
-    const sort = p.get("sort");
-    if (["default", "love", "own", "want", "newest", "name"].includes(sort)) state.sortBy = sort;
-  }
-  if (p.has("view")) {
-    const view = p.get("view");
-    if (view === "grid" || view === "compact") state.viewMode = view;
-  }
+export function readBrowseState(href) {
+  const p = new URL(href).searchParams;
+  return {
+    searchQuery: (p.get('q') || '').trim().slice(0, 300),
+    activeCategory: normalizeCategoryId(p.get('cat')),
+    sortBy: ['default', 'love', 'own', 'want', 'newest', 'name'].includes(p.get('sort')) ? p.get('sort') : 'default',
+    viewMode: p.get('view') === 'compact' ? 'compact' : 'grid',
+  };
 }
 
-export function writeStateToUrl() {
-  const p = new URLSearchParams();
-  if (state.searchQuery) p.set("q", state.searchQuery);
-  if (state.activeCategory && state.activeCategory !== "all") p.set("cat", state.activeCategory);
-  if (state.sortBy && state.sortBy !== "default") p.set("sort", state.sortBy);
-  if (state.viewMode && state.viewMode !== "grid") p.set("view", state.viewMode);
-  const next = `${window.location.pathname}${p.toString() ? `?${p}` : ""}${window.location.hash}`;
-  window.history.replaceState(null, "", next);
+export function readUrlIntoState(state) {
+  Object.assign(state, readBrowseState(location.href));
 }
+
+export function urlForBrowseState(href, state) {
+  const values = { q: state.searchQuery.trim(), cat: state.activeCategory === 'all' ? '' : state.activeCategory,
+    sort: state.sortBy === 'default' ? '' : state.sortBy, view: state.viewMode };
+  return updateQuery(href, values);
+}
+
+export const navigation = createQueryHistory(href => urlForBrowseState(href, state));

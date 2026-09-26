@@ -4,10 +4,8 @@ import { catalogFromConvexRows } from "./filters.js";
 import { normalizeCategoryId } from "./data.js";
 import { renderChips, renderGrid, renderFreshnessSection, renderViewToggle, renderProductDetailModal } from "./render.js";
 import { toast, debounce, sanitizeExternalUrl } from "./utils.js";
-import { writeStateToUrl } from "./url-sync.js";
+import { readUrlIntoState, navigation } from "./url-sync.js";
 import { NeoAuth } from "./neorgon-auth.js";
-
-const pushUrl = debounce(() => writeStateToUrl(), 400);
 
 // ── Auth ─────────────────────────────────────────────────────────────
 // The Neorgon Auth Kit owns the header slot, the sign-in dialog and the Convex
@@ -29,7 +27,7 @@ async function refreshAdminFlag() {
 }
 
 /**
- * Called once from app.js, before bindEvents. The kit calls the listener with the
+ * Called after public browsing is bound. The kit calls the listener with the
  * settled state, then only on real changes (never on token refresh ticks).
  */
 export async function initBuyhacksAuth() {
@@ -47,11 +45,11 @@ function refreshBrowseUi() {
   renderFreshnessSection();
   renderViewToggle();
   renderGrid();
-  pushUrl();
 }
 
 /** Reset every browse filter to its default and re-render. */
 function clearAllFilters() {
+  navigation.flush();
   state.activeCategory = "all";
   state.searchQuery = "";
   state.activeTags = [];
@@ -65,6 +63,8 @@ function clearAllFilters() {
   if (sort) sort.value = "default";
   syncControlsFromState();
   refreshBrowseUi();
+  navigation.push();
+  search?.focus();
 }
 
 export function syncControlsFromState() {
@@ -78,30 +78,54 @@ export function syncControlsFromState() {
   renderViewToggle();
 }
 
-/** Load votes, hacks, user products, and freshness feed from Convex. */
+let loadVersion = 0;
+/** Each public resource settles independently. A failed tip/vote request must
+ * never discard the catalog or its last successful result. */
 export async function loadRemoteData() {
-  try {
-    const [voteData, hackData, productRows] = await Promise.all([
-      convex.query(api.votes.getVotes, { visitorId }),
-      convex.query(api.hacks.getHacks, {}),
-      convex.query(api.products.list, {}),
-    ]);
-    state.voteCounts = voteData.counts;
-    state.myVotes = voteData.mine;
-    state.hacks = hackData;
-    state.products = catalogFromConvexRows(productRows || []);
-  } catch {
-    state.productsLoaded = true;
-    refreshBrowseUi();
-    return;
-  }
-  state.productsLoaded = true;
-  try {
-    state.freshnessFeed = await convex.query(api.freshness.getFeed, { tipsLimit: 6, productsLimit: 3 });
-  } catch {
-    state.freshnessFeed = { recentTips: [], newestProducts: [] };
-  }
+  const version = ++loadVersion;
+  state.catalogLoading = true;
+  state.catalogError = '';
+  state.enrichmentErrors = [];
   refreshBrowseUi();
+  async function load(label, name, args, apply) {
+    try {
+      const result = await convex.query(name, args);
+      if (version !== loadVersion) return;
+      apply(result);
+    } catch {
+      if (version !== loadVersion) return;
+      if (label === 'Products') {
+        state.catalogError = state.productsLoaded
+          ? 'Could not refresh products. Showing the last loaded catalog.'
+          : 'Could not load products. Please try again.';
+      } else state.enrichmentErrors.push(label);
+    } finally {
+      if (version === loadVersion) {
+        if (label === 'Products') state.catalogLoading = false;
+        refreshBrowseUi();
+      }
+    }
+  }
+  await Promise.all([
+    load('Products', api.products.list, {}, rows => {
+      if (!Array.isArray(rows)) throw new Error('Invalid catalog');
+      state.products = catalogFromConvexRows(rows);
+      state.productsLoaded = true;
+    }),
+    load('Reactions', api.votes.getVotes, { visitorId }, data => {
+      if (!data?.counts || !data?.mine) throw new Error('Invalid reactions');
+      state.voteCounts = data.counts;
+      state.myVotes = data.mine;
+    }),
+    load('Community tips', api.hacks.getHacks, {}, data => {
+      if (!data || typeof data !== 'object') throw new Error('Invalid tips');
+      state.hacks = data;
+    }),
+    load('Recent updates', api.freshness.getFeed, { tipsLimit: 6, productsLimit: 3 }, data => {
+      if (!Array.isArray(data?.recentTips) || !Array.isArray(data?.newestProducts)) throw new Error('Invalid updates');
+      state.freshnessFeed = data;
+    }),
+  ]);
 }
 
 /** Handle vote button clicks. The optimistic re-render is the primary feedback;
@@ -293,17 +317,13 @@ function updateUploadZoneVisibility() {
 
 /** Handle hack form submissions. Resolves true only when the tip was posted. */
 async function handleHackSubmit(slug, text, submitBtn) {
-  if (!getLoggedInUser() && !(await NeoAuth.requireSignIn({ reason: "Sign in to share tips.", invoker: submitBtn }))) return false;
-  if (!text.trim()) return false;
-
-  let restoreLabel;
-  if (submitBtn) {
-    restoreLabel = submitBtn.textContent;
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Posting…";
-  }
+  if (!text.trim() || state.pendingTips.has(slug)) return false;
+  state.pendingTips.add(slug);
+  if (submitBtn) submitBtn.disabled = true;
 
   try {
+    if (!getLoggedInUser() && !(await NeoAuth.requireSignIn({ reason: "Sign in to share tips.", invoker: submitBtn }))) return false;
+    renderProductDetailModal();
     const result = await convex.mutation(api.hacks.submitHack, {
       productSlug: slug,
       text: text.trim(),
@@ -311,6 +331,13 @@ async function handleHackSubmit(slug, text, submitBtn) {
     });
     if (result.ok) {
       toast("Tip shared!");
+      // The form may have been replaced during auth or a background refresh.
+      // Clear the current field before refreshing so a successful draft is not
+      // carried into the newly rendered form.
+      if (state.detailSlug === slug) {
+        const input = document.querySelector('#product-detail-body .hack-input');
+        if (input) input.value = '';
+      }
       await loadRemoteData();
       return true;
     } else {
@@ -319,39 +346,36 @@ async function handleHackSubmit(slug, text, submitBtn) {
   } catch {
     toast("Could not submit tip. Check your connection and try again.");
   } finally {
-    // loadRemoteData re-renders the panel, but restore in case the node persists.
-    if (submitBtn && submitBtn.isConnected) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = restoreLabel || "Post";
-    }
+    state.pendingTips.delete(slug);
+    if (state.detailSlug === slug) renderProductDetailModal();
   }
 }
 
 /** Bind all event listeners. */
 export function bindEvents() {
   document.getElementById("category-select")?.addEventListener("change", (e) => {
+    navigation.flush();
     state.activeCategory = e.target.value;
     refreshBrowseUi();
+    navigation.push();
   });
 
   // Search
   const searchInput = document.getElementById("search-input");
   if (searchInput) {
-    searchInput.addEventListener(
-      "input",
-      debounce((e) => {
-        state.searchQuery = e.target.value;
-        renderGrid();
-        pushUrl();
-      }, 300)
-    );
+    searchInput.addEventListener('input', e => {
+      state.searchQuery = e.target.value;
+      renderGrid();
+      navigation.schedule();
+    });
   }
 
   // Sort
   document.getElementById("sort-select")?.addEventListener("change", (e) => {
+    navigation.flush();
     state.sortBy = e.target.value;
     renderGrid();
-    pushUrl();
+    navigation.push();
   });
 
   document.getElementById("clear-filters")?.addEventListener("click", clearAllFilters);
@@ -362,11 +386,32 @@ export function bindEvents() {
     btn.addEventListener("click", () => {
       const v = btn.dataset.view;
       if (v !== "grid" && v !== "compact") return;
+      navigation.flush();
       state.viewMode = v;
       renderViewToggle();
       renderGrid();
-      pushUrl();
+      navigation.push();
     });
+  });
+
+  navigation.listen(() => {
+    state.detailSlug = null;
+    readUrlIntoState(state);
+    syncControlsFromState();
+    refreshBrowseUi();
+  });
+  for (const id of ['refreshProducts', 'retryProducts']) {
+    document.getElementById(id)?.addEventListener('click', () => {
+      searchInput?.focus();
+      void loadRemoteData();
+    });
+  }
+  document.getElementById('shareView')?.addEventListener('click', async () => {
+    navigation.replace();
+    try {
+      await navigator.clipboard.writeText(location.href);
+      toast('Link copied with your filters and layout');
+    } catch { toast('Could not copy. Copy the address from your browser.'); }
   });
 
   function closeProductDetail() {
@@ -374,8 +419,19 @@ export function bindEvents() {
     renderProductDetailModal();
   }
 
+  let detailInvoker;
+  let detailSlug;
+  const detailDialog = document.getElementById('product-detail-modal');
   document.getElementById("product-detail-close")?.addEventListener("click", closeProductDetail);
-  document.getElementById("product-detail-backdrop")?.addEventListener("click", closeProductDetail);
+  detailDialog?.addEventListener('click', event => { if (event.target === detailDialog) closeProductDetail(); });
+  detailDialog?.addEventListener('cancel', event => { event.preventDefault(); event.stopPropagation(); closeProductDetail(); });
+  detailDialog?.addEventListener('close', () => {
+    if (detailDialog.open) return;
+    state.detailSlug = null;
+    document.body.classList.remove('product-detail-open');
+    const replacement = [...document.querySelectorAll('[data-open-product]')].find(button => button.dataset.openProduct === detailSlug && button.getClientRects().length);
+    (detailInvoker?.isConnected && detailInvoker.getClientRects().length ? detailInvoker : replacement || searchInput)?.focus({ preventScroll: true });
+  });
 
   document.getElementById("product-detail-modal")?.addEventListener("change", (e) => {
     const t = e.target;
@@ -401,6 +457,8 @@ export function bindEvents() {
     if (openBtn) {
       const slug = openBtn.getAttribute("data-open-product");
       if (slug) {
+        detailInvoker = openBtn;
+        detailSlug = slug;
         state.detailSlug = slug;
         renderProductDetailModal();
       }
@@ -448,25 +506,15 @@ export function bindEvents() {
   // Add Product toggle
   document.getElementById("addProductToggle")?.addEventListener("click", () => {
     const panel = document.getElementById("uploadPanel");
-    if (panel) panel.classList.toggle("open");
+    if (panel) {
+      const open = panel.classList.toggle('open');
+      document.getElementById('addProductToggle').setAttribute('aria-expanded', String(open));
+    }
   });
 
   // Sign in from the Add Product panel
   document.getElementById("uploadSigninBtn")?.addEventListener("click", (e) => {
     void NeoAuth.requireSignIn({ reason: ADD_PRODUCT_REASON, invoker: e.currentTarget });
-  });
-
-  // Escape closes the product detail modal
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    // The kit's sign-in dialog is a native <dialog> that takes its own Escape;
-    // closing the detail modal behind it too would drop the tip being posted.
-    if (document.querySelector("dialog[open]")) return;
-    const detail = document.getElementById("product-detail-modal");
-    if (detail?.classList.contains("open")) {
-      state.detailSlug = null;
-      renderProductDetailModal();
-    }
   });
 
   setupUploadPanel();

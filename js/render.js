@@ -160,6 +160,7 @@ function voteButtonsHtml(product, counts, mine) {
 
 function hacksPanelHtml(product, hacks) {
   const isAdmin = state.isConvexAdmin;
+  const pending = state.pendingTips.has(product.slug);
   const hacksHtml = hacks.length
     ? hacks.map((h) => {
         const delBtn = isAdmin && h._id ? ` <button type="button" class="hack-delete" data-hack-id="${h._id}" title="Delete tip">&times;</button>` : "";
@@ -171,8 +172,8 @@ function hacksPanelHtml(product, hacks) {
       <h3 class="detail-section-label">Community tips</h3>
       <div class="hacks-panel hacks-panel--always">${hacksHtml}</div>
       <form class="hack-form" data-slug="${product.slug}">
-        <input type="text" class="hack-input" placeholder="Share a life hack or tip..." maxlength="280" autocomplete="off">
-        <button type="submit" class="hack-submit">Post</button>
+        <input type="text" class="hack-input" aria-label="Your tip" placeholder="Share a life hack or tip..." maxlength="280" autocomplete="off" ${pending ? 'readonly' : ''}>
+        <button type="submit" class="hack-submit" ${pending ? 'disabled' : ''}>${pending ? 'Posting…' : 'Post'}</button>
       </form>
     </div>`;
 }
@@ -377,8 +378,7 @@ export function renderProductDetailModal() {
   if (!modal || !body) return;
 
   if (!state.detailSlug) {
-    modal.classList.remove("open");
-    modal.setAttribute("aria-hidden", "true");
+    if (modal.open) modal.close();
     document.body.classList.remove("product-detail-open");
     body.innerHTML = "";
     return;
@@ -391,24 +391,44 @@ export function renderProductDetailModal() {
     return;
   }
 
-  modal.classList.add("open");
-  modal.setAttribute("aria-hidden", "false");
   document.body.classList.add("product-detail-open");
   if (title) title.textContent = product.name;
+  const draft = body.querySelector('.hack-input')?.value;
+  const focused = body.contains(document.activeElement) ? document.activeElement : null;
+  const focusedIndex = focused ? [...body.querySelectorAll('input, button, a')].indexOf(focused) : -1;
   body.innerHTML = buildProductDetailInner(product);
-  requestAnimationFrame(() => {
-    document.getElementById("product-detail-close")?.focus();
-  });
+  if (draft !== undefined) body.querySelector('.hack-input').value = draft;
+  if (!modal.open) modal.showModal();
+  else if (focusedIndex >= 0) {
+    const replacement = focused.classList.contains('hack-input') ? body.querySelector('.hack-input')
+      : focused.id ? document.getElementById(focused.id)
+        : body.querySelectorAll('input, button, a')[focusedIndex];
+    if (replacement && !replacement.disabled) replacement.focus({ preventScroll: true });
+    else document.getElementById('product-detail-close').focus({ preventScroll: true });
+  }
 }
 
 export function renderGrid() {
   const container = document.getElementById("product-grid");
   if (!container) return;
+  container.setAttribute('aria-busy', String(state.catalogLoading));
+  const status = document.getElementById('catalogStatus');
+  const message = state.catalogError || (state.enrichmentErrors.length
+    ? `${state.enrichmentErrors.join(', ')} could not be refreshed.${state.productsLoaded ? ' You can keep browsing the loaded products.' : ''}` : '');
+  status.hidden = !message;
+  document.getElementById('catalogMessage').textContent = message;
+  document.getElementById('retryProducts').disabled = state.catalogLoading;
+  document.getElementById('refreshProducts').disabled = state.catalogLoading;
 
   // Before the first catalog load resolves, keep the skeleton instead of
   // flashing an empty state (auth onSession can call renderGrid early).
-  if (!state.productsLoaded && state.products.length === 0) {
-    renderGridSkeleton();
+  if (!state.productsLoaded) {
+    if (state.catalogLoading) renderGridSkeleton();
+    else {
+      container.replaceChildren();
+      document.getElementById('result-count').textContent = 'Products unavailable';
+      document.getElementById('results-live').textContent = '';
+    }
     return;
   }
 

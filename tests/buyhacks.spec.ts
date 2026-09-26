@@ -1,6 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { installFixture } from './fixture';
+import { resolve } from 'node:path';
 
 test.describe("BuyHacks UI", () => {
+  test.beforeEach(async ({page}) => installFixture(page));
   test("loads main heading and product cards", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "BuyHacks" })).toBeVisible();
@@ -30,7 +33,7 @@ test.describe("BuyHacks UI", () => {
     await expect(page.locator(".product-card").first()).toBeVisible({ timeout: 15_000 });
     await page.fill("#search-input", "label");
     await page.selectOption("#sort-select", "name");
-    await page.getByRole("button", { name: "Clear filters" }).click();
+    await page.locator('#clear-filters').click();
     await expect(page.locator("#search-input")).toHaveValue("");
     await expect(page.locator("#sort-select")).toHaveValue("default");
   });
@@ -55,5 +58,60 @@ test.describe("BuyHacks UI", () => {
     await page.getByRole("button", { name: "List" }).click();
     await expect(page.locator("#product-grid")).toHaveClass(/compact/);
     await expect(page.locator(".product-card--row").first()).toBeVisible();
+  });
+
+  test('tips survive a failed save and background refresh; success clears the current form', async ({page}) => {
+    await page.goto('/');
+    await page.locator('[data-open-product]').first().click();
+    await page.locator('.hack-input').fill('Keep this draft');
+    await page.evaluate(() => { (window as any).fixture.fail = true; });
+    await page.locator('.hack-submit').click();
+    await expect(page.locator('#toast')).toContainText('Could not submit');
+    await expect(page.locator('.hack-input')).toHaveValue('Keep this draft');
+    await expect(page.locator('.hack-submit')).toBeEnabled();
+    await page.evaluate(() => { (window as any).fixture.fail = false; });
+    await page.locator('.hack-submit').click();
+    await expect(page.locator('.hack-submit')).toBeDisabled();
+    await page.evaluate(async () => { const path='/js/events.js'; await (await import(path)).loadRemoteData(); });
+    await expect(page.locator('.hack-submit')).toBeDisabled();
+    await expect(page.locator('.hack-input')).toHaveValue('');
+    await expect(page.locator('.hack-submit')).toBeEnabled();
+    await expect(page.locator('.hack-text')).toHaveText('Keep this draft');
+    expect(await page.evaluate(() => (window as any).fixture.calls.filter(c=>c.name==='hacks:submitHack').length)).toBe(2);
+  });
+
+  test('sign-in dismissal preserves the tip and sends no write', async ({page}) => {
+    await page.goto('/');
+    await page.locator('[data-open-product]').first().click();
+    await page.evaluate(async () => {
+      const path='/js/neorgon-auth.js';
+      (await import(path)).NeoAuth.listener({signedIn:false,label:null});
+    });
+    await page.locator('.hack-input').fill('For later');
+    await page.locator('.hack-submit').click();
+    await expect(page.locator('.hack-input')).toHaveValue('For later');
+    await expect(page.locator('.hack-submit')).toBeEnabled();
+    expect(await page.evaluate(() => (window as any).fixture.signInRequested)).toBe(true);
+    expect(await page.evaluate(() => (window as any).fixture.calls.length)).toBe(0);
+  });
+
+  test('product upload and reactions still reach their original APIs', async ({page}) => {
+    await page.goto('/');
+    await page.locator('#addProductToggle').click();
+    await page.locator('#productName').fill('Travel stand');
+    await page.locator('#productBrand').fill('Example');
+    await page.locator('#productDescription').fill('Fits in a bag.');
+    await page.locator('#productCategory').selectOption('work-tech');
+    await page.locator('#productTags').fill('travel, desk');
+    await page.locator('#productUrl').fill('https://example.com/stand');
+    await page.locator('#removeBgToggle').uncheck();
+    await page.locator('#fileInput').setInputFiles(resolve('images/eufy-cordless-vacuum-s11.png'));
+    await page.locator('#uploadSubmit').click();
+    await expect(page.locator('#productName')).toHaveValue('');
+    await expect(page.locator('.product-card')).toHaveCount(3);
+    const product = await page.evaluate(() => (window as any).fixture.calls.find(c=>c.name==='products:saveProduct').args);
+    expect(product).toMatchObject({name:'Travel stand',category:'work-tech',tags:['travel','desk'],productUrl:'https://example.com/stand',storageId:'fixture-storage'});
+    await page.locator('.vote-btn[data-type="love"]').first().click();
+    await expect.poll(() => page.evaluate(() => (window as any).fixture.calls.filter(c=>c.name==='votes:toggleVote').length)).toBe(1);
   });
 });

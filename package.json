@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/filters.test.mjs && playwright test"
+    "test": "node --test tests/*.test.mjs && playwright test"
   },
   "dependencies": {
     "convex": "^1.21.0"
