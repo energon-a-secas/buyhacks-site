@@ -19,8 +19,8 @@ export const isAdmin = query({
 
 // The password-era register, login, setRole and getRole were deleted on
 // 2026-09-18 (queue #63c). They lost their last caller when the Auth Kit landed
-// on 2026-09-10 and stayed deployed, so this deployment's public URL, which sits
-// in js/state.js, still answered them:
+// on 2026-09-10 and stayed deployed, so this deployment's public URL, which ships
+// in js/client.js, still answered them:
 //
 //   register  inserted a users row for anyone who asked, unauthenticated and
 //             uncapped, and made the first caller an admin.
