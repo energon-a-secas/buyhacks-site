@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-PORT ?= 8777
+PORT ?= 8812
 
 # ── Help ───────────────────────────────────────────────────────────────────────
 .PHONY: help
@@ -20,7 +20,7 @@ help:
 # ── Setup ──────────────────────────────────────────────────────────────────────
 .PHONY: setup
 setup: install deploy
-	@echo "Setup complete — run 'make serve' to view the site"
+	@echo "Setup complete: run 'make serve' to view the site"
 
 # ── Dependencies ───────────────────────────────────────────────────────────────
 .PHONY: install
